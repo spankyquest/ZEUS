@@ -1,0 +1,30 @@
+## Interface: 16001
+## Title: ZEUS - Zero Effort Utility Spamming
+## Notes: Power your allies. Hand out buffs to players you pass across Azeroth. Press your Buff Key or macro to buff nearby friendly players.
+## Author: SpankyQuest
+## X-License: MIT
+## OptionalDeps: ZEUS_Olympus
+## Version: @VERSION@
+## SavedVariablesPerCharacter: ZEUSDB
+## IconTexture: Interface\Icons\Spell_Nature_Lightning
+
+Edition.lua
+Bootstrap.lua
+
+Libs/LibStub.lua
+Libs/CallbackHandler-1.0.lua
+Libs/LibDataBroker-1.1.lua
+Libs/LibDBIcon-1.0.lua
+
+Data.lua
+Policy.lua
+Priorities.lua
+Reporting.lua
+Core.lua
+Auras.lua
+Queue.lua
+Buttons.lua
+Nameplates.lua
+Macro.lua
+PriorityUI.lua
+UI.lua

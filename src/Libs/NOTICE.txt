@@ -1,0 +1,21 @@
+Bundled libraries (upstream source, unmodified), retrieved 2026-10-06 UTC.
+
+LibDBIcon-1.0, minor 56: Funkeh and contributors
+https://repos.wowace.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0/LibDBIcon-1.0.lua
+License: Ace3 Style BSD; see Ace3-LICENSE.txt.
+https://www.wowace.com/project/15552/license
+
+LibStub, minor 2: credited authors in source; Public Domain.
+CallbackHandler-1.0, minor 8: Ace3 Development Team; Ace3-LICENSE.txt.
+Sources: https://github.com/WoWUIDev/Ace3
+
+LibDataBroker-1.1, minor 4: Tekkub and contributors.
+Source: https://github.com/tekkub/libdatabroker-1-1
+Upstream embedding instructions: https://www.wowace.com/projects/libdatabroker-1-1
+Bundled as directed by upstream; upstream README retained.
+
+SHA-256 of bundled Lua sources:
+24f7342068e0d1b8d38ee1b8c7ceeea625bea079a01f0222e341660c7b104432  CallbackHandler-1.0.lua
+85c426947fa50319071b64c7cb845326c44316341713a3847dc8149c1e36716b  LibDBIcon-1.0.lua
+f3d4758f2060215492c9764b1d7dc2a336826d4cd253cd54ff9ff7c6d78f04e2  LibDataBroker-1.1.lua
+26401bc42c26d1d1b6f7ad9410aa464edcbe4d32d74ebadeeecd8c0110236f7d  LibStub.lua

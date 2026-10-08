@@ -1,0 +1,31 @@
+## Interface: 16001
+## Title: ZEUS Olympus - Zero Effort Utility Spamming
+## Notes: Strengthen your guild. Hand out buffs to nearby Olympus guild members across Azeroth. Press your Buff Key or macro. Works without Olympus installed.
+## Author: SpankyQuest
+## X-License: MIT
+## Version: @VERSION@-olympus
+## SavedVariablesPerCharacter: ZEUSOlympusDB
+## IconTexture: Interface\Icons\Spell_Nature_Lightning
+
+Edition.lua
+Bootstrap.lua
+
+Libs/LibStub.lua
+Libs/CallbackHandler-1.0.lua
+Libs/LibDataBroker-1.1.lua
+Libs/LibDBIcon-1.0.lua
+
+Data.lua
+Policy.lua
+Priorities.lua
+OlympusPolicy.lua
+Reporting.lua
+OlympusAPI.lua
+Core.lua
+Auras.lua
+Queue.lua
+Buttons.lua
+Nameplates.lua
+Macro.lua
+PriorityUI.lua
+UI.lua

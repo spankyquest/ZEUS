@@ -1,0 +1,24 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Script file="EmbeddedNamespace.lua"/>
+    <Script file="../Edition.lua"/>
+    <Script file="../Bootstrap.lua"/>
+    <Script file="../Libs/LibStub.lua"/>
+    <Script file="../Libs/CallbackHandler-1.0.lua"/>
+    <Script file="../Libs/LibDataBroker-1.1.lua"/>
+    <Script file="../Libs/LibDBIcon-1.0.lua"/>
+    <Script file="../Data.lua"/>
+    <Script file="../Policy.lua"/>
+    <Script file="../Priorities.lua"/>
+    <Script file="../OlympusPolicy.lua"/>
+    <Script file="../Reporting.lua"/>
+    <Script file="../OlympusAPI.lua"/>
+    <Script file="../Core.lua"/>
+    <Script file="../Auras.lua"/>
+    <Script file="../Queue.lua"/>
+    <Script file="../Buttons.lua"/>
+    <Script file="../Nameplates.lua"/>
+    <Script file="../Macro.lua"/>
+    <Script file="../PriorityUI.lua"/>
+    <Script file="../UI.lua"/>
+    <Script file="OlympusAdapter.lua"/>
+</Ui>

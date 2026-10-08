@@ -1,0 +1,3 @@
+-- Load ONLY from Olympus, before the embedded ZEUS runtime files.
+local _, ns = ...
+ns.ZEUSModule = {}
