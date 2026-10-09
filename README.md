@@ -10,6 +10,8 @@ missing your buff, targets them and casts it. It's as close to auto-buffing as t
 game allows: every buff still takes a press, and ZEUS handles the targeting, the
 ranks and who already has what.
 
+<img width="795" height="759" alt="Screenshot 2026-10-09 130744" src="https://github.com/user-attachments/assets/fc4c232e-74b1-402b-af30-750b541dccfd" />
+
 ## Pick your edition
 
 | Edition | Who it buffs | Read more |
