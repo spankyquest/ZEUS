@@ -9,6 +9,26 @@ local function safe(v) return Z.Safe(v) end
 local function now() return time() end
 local ordinal = 0
 
+-- Line of sight. No API tells whether a player is in sight before casting, so a failure is
+-- the only signal. Each one keeps that player out for a short, growing wait (2, 4, 8, then
+-- 15 seconds); after it they sort behind everyone not marked, so the rest of the queue is
+-- finished first instead of alternating between players out of sight. A successful cast
+-- on them clears the mark, and marks fade two minutes after the last failure.
+local LOS_WAIT = {2, 4, 8, 15}
+function Z.NoteOutOfSight(guid)
+    local r = S.los[guid] or {n=0}
+    r.n = r.n + 1
+    r.at = GetTime()
+    r.untilT = r.at + LOS_WAIT[math.min(r.n, #LOS_WAIT)]
+    S.los[guid] = r
+end
+function Z.ClearOutOfSight(guid) S.los[guid] = nil end
+function Z.ForgetOldSightFailures()
+    for guid, r in pairs(S.los) do
+        if GetTime() - r.at > 120 then S.los[guid] = nil end
+    end
+end
+
 local function enabled(p)
     return Z.db.enabled[p.key] ~= false and #p.learned > 0
 end
@@ -31,6 +51,8 @@ local function basic(unit)
         or (UnitIsPVPFreeForAll and UnitIsPVPFreeForAll(unit))) then return end
     if S.passSkipped[guid] then return end
     if Z.skips[guid] and Z.skips[guid] > GetTime() then return end
+    local los = S.los[guid]
+    if los and los.untilT > GetTime() then return end
     local level = UnitLevel(unit)
     if not safe(level) or type(level) ~= "number" or level < 1 then return end
     return guid, class, level
@@ -66,6 +88,11 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     end
     local a = Z.MatchAura(snap,p)
     if a.blocked then return end
+    local rank = Z.SpellRankIndex(p,id)
+    -- Another caster's stronger rank: a weaker cast would only bounce.
+    if rank and a.rankIndex and a.rankIndex < rank then return end
+    -- A buff that bounced this one before, on this player or learned for everyone.
+    if Z.Held(guid,p,snap) or Z.LearnedBlocker(snap,p,rank) then return end
     local upgrade=Z.CanUpgrade(p,id,a)
     if Z.Suppressed(Z.db,guid,p.key,now()) then
         if not upgrade then return end
@@ -73,10 +100,14 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
         -- Allow the just-cast aura to arrive before trusting a stale lower rank.
         if record.cast and now()-record.cast<2 then return end
     end
-    -- Changing the selected blessing must not undo a recipient's opt-out.
+    -- Changing the selected blessing must not undo a recipient's opt-out. Only a blessing
+    -- ZEUS put on them counts: not a bounce, and not another paladin's blessing it saw.
     if p.blessing then
+        local records = Z.db.memory[guid]
         for _, other in ipairs(Z.active) do
-            if other.blessing and (other.key~=p.key or not upgrade) and Z.Suppressed(Z.db,guid,other.key,now()) then return end
+            local r = records and records[other.key]
+            if other.blessing and r and not r.blockedBy and not r.observed and (other.key~=p.key or not upgrade)
+                and Z.Suppressed(Z.db,guid,other.key,now()) then return end
         end
     end
     if not upgrade and a.found and a.duration and a.remaining and a.remaining > a.duration*Z.db.refresh/100 then return end
@@ -89,7 +120,8 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     if not Z.seen[guid] then ordinal=ordinal+1 Z.seen[guid]=ordinal end
     return {unit=unit,guid=guid,class=class,level=level,spellID=id,profile=p,name=name,
         inspect=need=="inspect",state=need=="refresh" and 1 or 0,
-        remaining=remaining,priority=priority,intent=intent or 2,order=Z.seen[guid]}
+        remaining=remaining,priority=priority,intent=intent or 2,order=Z.seen[guid],
+        los=S.los[guid] and 1 or 0}
 end
 function Z.Candidate(unit, p, intent, waitForCaster)
     local guid, class, level = basic(unit)

@@ -75,14 +75,23 @@ def assemble(edition, parent):
     return addon
 
 
+# Built ZIPs from any version, removed before a build. Nothing else in the folder is touched.
+BUILT = re.compile(r'ZEUS-\d+\.\d+\.\d+(-olympus)?(-beta)?\.zip')
+
+
+def zip_name(edition):
+    return f'ZEUS-{edition_version(edition)}.zip'
+
+
 def build(out):
     out.mkdir(parents=True, exist_ok=True)
-    for stale in out.glob('ZEUS-*-beta.zip'):
-        stale.unlink()
+    for stale in out.glob('ZEUS-*.zip'):
+        if BUILT.fullmatch(stale.name):
+            stale.unlink()
     with tempfile.TemporaryDirectory() as tmp:
         for edition, folder in EDITIONS.items():
             addon = assemble(edition, Path(tmp) / edition)
-            dest = out / f'ZEUS-{edition_version(edition)}-beta.zip'
+            dest = out / zip_name(edition)
             # Fixed timestamps and permissions make rebuilds byte-identical.
             with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
                 for path in sorted(addon.rglob('*')):
@@ -96,7 +105,7 @@ def build(out):
                 assert archive.testzip() is None
                 assert f'{folder}/{folder}.toc' in archive.namelist()
             print(dest)
-    zips = sorted(out.glob(f'ZEUS-{version()}*-beta.zip'))
+    zips = sorted(out / zip_name(edition) for edition in EDITIONS)
     (out / 'SHA256SUMS.txt').write_text(''.join(
         hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in zips))
 

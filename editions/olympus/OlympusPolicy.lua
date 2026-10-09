@@ -1,5 +1,7 @@
 -- Name classifier extracted from Olympus Core.lua, commit
--- 5825ed41843cd9b303276975a92b752cd48daa69. See OLYMPUS-LICENSE.txt.
+-- 5825ed41843cd9b303276975a92b752cd48daa69, and checked unchanged (name rule, King's guilds,
+-- built-in approvals and removal) against commit 783e758b5573df1b35dfd42da6cce47e28b7558c.
+-- Its answers match Olympus's own guild-name fixtures (dev/tests). See OLYMPUS-LICENSE.txt.
 -- No census, member roster, comms, or Olympus SavedVariables are copied.
 local _, Z = ...
 Z = Z.ZEUSModule or Z
@@ -119,16 +121,28 @@ local function NamedOlympus(guild)
 end
 
 
+-- Where the answer comes from, in order: a provider the host installed (the adapter, or any
+-- addon through SetGuildEligibilityProvider); Olympus's own read-only bridge when it offers
+-- OlympusBridge.IsOlympusGuild(guild); the bundled snapshot below.
+local BUILTIN = "olympus-783e758-builtin"
 local provider
-local revision = "olympus-5825ed4-builtin"
+local revision = BUILTIN
 function Z.SetGuildProvider(fn, label)
     if fn ~= nil and type(fn) ~= "function" then return false end
     if label ~= nil and type(label) ~= "string" then return false end
     provider = fn
-    revision = fn and (label or "host-policy") or "olympus-5825ed4-builtin"
+    revision = fn and (label or "host-policy") or BUILTIN
     return true
 end
-function Z.GuildPolicyRevision() return revision end
+local function bridge()
+    local b = _G.OlympusBridge
+    local ask = type(b) == "table" and b.IsOlympusGuild
+    if type(ask) == "function" then return ask end
+end
+function Z.GuildPolicyRevision()
+    if not provider and bridge() then return "olympus-bridge" end
+    return revision
+end
 function Z.OlympusGuildAllowed(guild, faction, realm)
     if type(guild) ~= "string" or guild == "" then return false end
     if faction ~= "Alliance" and faction ~= "Horde" then return false end
@@ -153,9 +167,15 @@ function Z.OlympusUnitAllowed(unit)
     if not Z.Safe(faction) or not Z.Safe(mine) or not faction or faction ~= mine then return false end
     local guild = GetGuildInfo and GetGuildInfo(unit)
     if not Z.Safe(guild) or type(guild) ~= "string" or guild == "" then return false end
+    -- A refusal, unknown result, or error from the host or the bridge NEVER falls back
+    -- to the snapshot.
     if provider then
-        -- A host refusal, unknown result, or error NEVER falls back to the snapshot.
         local ok, allowed = pcall(provider, unit, guild, faction)
+        return ok and Z.Safe(allowed) and allowed == true
+    end
+    local ask = bridge()
+    if ask then
+        local ok, allowed = pcall(ask, guild)
         return ok and Z.Safe(allowed) and allowed == true
     end
     local realm = GetRealmName and GetRealmName()

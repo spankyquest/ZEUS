@@ -1,9 +1,10 @@
 local addonName, Z = ...
 Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
+local L = Z.L
 -- Shared runtime state and lifecycle: refresh scheduling, cast outcomes,
--- saved settings, events, and the slash command. Auras.lua, Queue.lua and
--- Buttons.lua (loaded next) add the subsystems.
+-- saved settings, events, and the slash command. Auras.lua, Blockers.lua, Queue.lua
+-- and Buttons.lua (loaded next) add the subsystems.
 Z.frame = CreateFrame("Frame")
 Z.plates, Z.seen, Z.skips, Z.queue, Z.active = {}, {}, {}, {}, {}
 Z.diag = {down=0, up=0, attempts=0, successes=0, last="Ready"}
@@ -12,20 +13,26 @@ Z.diag = {down=0, up=0, attempts=0, successes=0, last="Ready"}
 --   acquisition  nameplate player being targeted so their auras can be read
 --   retry        mana/cooldown failure that keeps the same recipient and buff
 --   batch        one recipient's remaining buffs, finished before moving on
---   passSkipped  recipients set aside until the current pass ends
-local S = {passSkipped={}}
+--   passSkipped  recipients whose visit ended, set aside until the current pass ends
+--   los          players a cast could not reach for line of sight (Queue.lua)
+local S = {passSkipped={}, los={}}
 Z.state = S
 local started, elapsed, cleanupElapsed = false, 0, 0
+-- A temporary run (the Buff macro pressed while ZEUS is off) ends this many seconds after the
+-- last press, whatever is left to buff: around other players there nearly always is, so
+-- waiting for an empty queue could leave ZEUS and nameplates on indefinitely. Spamming keeps
+-- the run going, so nameplates aren't switched off and on with every press.
+local ONE_SHOT_IDLE = 3
 -- Set by frequent client events; the next frame performs one rebuild.
 local dirty = false
 local function safe(v) return Z.Safe(v) end
 local function now() return time() end
-function Z.Print(s) DEFAULT_CHAT_FRAME:AddMessage("|cffffd166ZEUS:|r " .. tostring(s)) end
+function Z.Print(s) DEFAULT_CHAT_FRAME:AddMessage("|cffffd166ZEUS:|r " .. tostring(s)) end -- gp:chat-output
 
 function Z.SyncNameplateState()
     if not started then return end
     local enabled=Z.IsOperational()
-    if Z.enabled~=enabled or Z.bindingEnabled~=Z.IsEnabled() or Z.bindingPending then
+    if Z.enabled~=enabled or Z.bindingEnabled~=Z.BindingWanted() or Z.bindingPending then
         Z.enabled=enabled
         Z.ApplyBinding()
     end
@@ -43,7 +50,14 @@ function Z.Refresh(fromInput)
     local wasDirty=dirty
     dirty=false
     Z.SyncNameplateState()
-    if InCombatLockdown() or not Z.enabled then return end
+    if InCombatLockdown() then return end
+    -- End a temporary run once the macro has rested, or at once if its nameplates were hidden.
+    if Z.oneShot and Z.IsEnabled() and not Z.GamepadUI() and (not Z.FriendsEnabled()
+        or GetTime()-(Z.lastBuffPress or -math.huge)>=ONE_SHOT_IDLE) then
+        Z.SetZEUSEnabled(false,false)
+        return
+    end
+    if not Z.enabled then return end
     local targetGUID=UnitGUID("target")
     -- Input reuses a scan under 100 ms old unless something changed since.
     if fromInput and not wasDirty and not S.pending and not S.acquisition and safe(targetGUID)
@@ -58,7 +72,9 @@ function Z.Refresh(fromInput)
             S.acquisition=nil
             if c and not c.inspect then Z.Arm(c) if Z.UpdateStatus then Z.UpdateStatus() end return end
             -- The target resolved but cannot be safely buffed. Do not reacquire
-            -- the same nameplate repeatedly while its data stays unavailable.
+            -- the same nameplate repeatedly while its data stays unavailable, and
+            -- remember a buff or blocker they carry for when they are a nameplate again.
+            Z.NoteVerified("target",guid,acquisition.profile)
             Z.skips[guid]=GetTime()+2
         elseif GetTime()-acquisition.at < 0.45 then
             Z.Arm(nil) return
@@ -75,10 +91,6 @@ function Z.Refresh(fromInput)
         nextInputScan=GetTime()+0.1
         inputTarget=targetGUID
         Z.Arm(Z.queue[1])
-        if Z.oneShot and Z.oneShotReady and #Z.queue==0 and not S.batch and not S.retry and not S.acquisition then
-            Z.SetZEUSEnabled(false,false)
-            return
-        end
     end
     if Z.UpdateStatus then Z.UpdateStatus() end
 end
@@ -90,7 +102,9 @@ local function success(unit, castGUID, id)
         or a.spellID~=id or GetTime()-a.at>2 then return end
     if a.castGUID and safe(castGUID) and castGUID~=a.castGUID then return end
     Z.RecordReportedSuccess(a,castGUID)
+    Z.NoteBuffSuccess(a)
     Z.FinishBatchAttempt(a)
+    Z.ClearOutOfSight(a.guid)
     S.pending,S.retry=nil,nil
     -- Profile duration is only a fallback; the observed aura wins below.
     Z.Remember(Z.db,a.guid,a.profile.key,now(),Z.ProfileDuration(a.profile))
@@ -113,28 +127,19 @@ local function failure(message)
     local retryFailure=Z.RetryFailure(message)
     local bounce=message and ((SPELL_FAILED_AURA_BOUNCED and message==SPELL_FAILED_AURA_BOUNCED)
         or message:gsub("%.$","")=="A more powerful spell is already active")
-    if retryFailure and not inBatch then
+    if Z.LineOfSightFailure(message) then
+        Z.skips[pending.guid]=nil -- Remove the provisional cast-failed delay.
+        Z.NoteOutOfSight(pending.guid)
+        S.retry=nil
+        -- Every remaining buff of a visit needs sight of the same player: end the visit.
+        if inBatch then S.batch=nil end
+    elseif retryFailure and not inBatch then
         Z.skips[pending.guid]=nil
         S.retry={guid=pending.guid,profile=pending.profile,intent=pending.intent}
-    elseif Z.LineOfSightFailure(message) and not inBatch then
-        Z.skips[pending.guid]=nil -- Remove the provisional cast-failed delay.
-        S.passSkipped[pending.guid]=true
-        S.retry=nil
     elseif bounce then
         S.retry=nil
-        local p=pending.profile
-        local duration=Z.ProfileDuration(p)
-        local expiration=now()+duration
-        if UnitGUID(pending.unit)==pending.guid then
-            local aura=Z.Aura(pending.unit,p)
-            if aura.duration and aura.remaining and aura.remaining>0 then
-                duration=aura.duration
-                expiration=now()+aura.remaining
-            end
-        end
-        Z.Remember(Z.db,pending.guid,p.key,now(),duration,expiration)
-        -- An aura already inside the refresh window can still reject
-        -- a weaker rank; briefly back off without overriding the slider.
+        -- Find the stronger buff and hold the player while it lasts (Blockers.lua).
+        Z.NoteBounce(pending)
         if not inBatch then Z.skips[pending.guid]=GetTime()+3 end
     elseif not inBatch then S.retry=nil Z.skips[pending.guid]=GetTime()+10 end
     if inBatch then
@@ -154,7 +159,43 @@ local function cleanup()
         if not next(entries) then Z.db.memory[guid]=nil end
     end
     for guid,expires in pairs(Z.skips) do if expires<=GetTime() then Z.skips[guid]=nil end end
+    Z.ForgetOldSightFailures()
 end
+-- /zeus: registered only where the gamepad gate allows (never at a gamepad login). Once
+-- registered it stays until a /reload, so it does nothing while the gamepad UI is on.
+local slashInstalled=false
+local function slash(msg)
+    if not started then return end
+    if Z.GamepadUI() then Z.Print(Z.GAMEPAD_PAUSED) return end
+    msg=(msg or ""):lower():match("^%s*(.-)%s*$")
+    if msg=="toggle" then Z.ToggleZEUS() return end
+    if msg=="report" then Z.PrintBuffReport() return end
+    if msg=="blockers" then Z.PrintBlockers() return end
+    if msg=="blockers clear" then Z.ClearBlockers() return end
+    if msg=="debug" or msg=="status" then
+        Z.Print(string.format("v%s | %s | %s | key %s | edges down/up %d/%d | attempts %d | successes %d",
+            Z.version,Z.class,Z.db.dualEdge and "both edges" or "release only",Z.db.key or "unbound",
+            Z.diag.down,Z.diag.up,Z.diag.attempts,Z.diag.successes))
+        Z.Print(Z.diag.last)
+        local language=Z.language
+        Z.Print(string.format("language: %s, %d lines translated, %s left out",language.code,language.taken,
+            #language.skipped>0 and table.concat(language.skipped,", ") or "none"))
+    elseif msg=="input release" or msg=="input both" then
+        if InCombatLockdown() then Z.Print(L.NO_COMBAT_INPUT) return end
+        Z.db.dualEdge=msg=="input both"
+        Z.Print(Z.db.dualEdge and L.INPUT_BOTH or L.INPUT_RELEASE)
+    else Z.ToggleSettings() end
+end
+local function installSlash()
+    if slashInstalled or not Z.Allowed("slash") then return end
+    slashInstalled=true
+    SLASH_ZEUS1="/zeus" -- gp:slash
+    SlashCmdList.ZEUS=slash -- gp:slash
+end
+Z.GamepadHooks("slash",{
+    park=function() if slashInstalled then Z.GamepadLeftover("slash") end end,
+    install=installSlash,
+})
 local function copy(value)
     if type(value)~="table" then return value end
     local out={} for k,v in pairs(value) do out[k]=copy(v) end return out
@@ -171,8 +212,11 @@ local function initialize()
     Z.InitializeReporting()
     Z.db.enabled=type(Z.db.enabled)=="table" and Z.db.enabled or {}
     Z.db.memory=type(Z.db.memory)=="table" and Z.db.memory or {}
+    Z.NormalizeBlockers(Z.db)
     Z.NormalizePriorities(Z.db)
     if type(Z.db.zeusEnabled)~="boolean" then Z.db.zeusEnabled=false end
+    -- A temporary run interrupted by a /reload carries on, so it still ends by itself (at once).
+    Z.oneShot=Z.db.oneShotRun==true and Z.db.zeusEnabled or nil
     Z.db.refresh=math.max(0,math.min(99,math.floor((tonumber(Z.db.refresh) or 20)+0.5)))
     if Z.db.pvp==nil then Z.db.pvp=true end
     if Z.db.dualEdge==nil then Z.db.dualEdge=true end
@@ -185,11 +229,16 @@ local function initialize()
     for _,p in ipairs(Z.profiles) do durations[p.key]=Z.ProfileDuration(p) end
     Z.MigrateMemory(Z.db,durations)
     Z.CreateButtons()
+    installSlash()
     started=true
     Z.CreateUI()
     Z.ApplyBinding()
     Z.Refresh()
-    if not Z.db.key then Z.Print("Choose a Buff Key or drag the Buff macro from /zeus.") end
+    -- A one-time pointer for a new character; ZEUS stays quiet after that.
+    if not Z.db.key and not Z.db.hinted and not Z.GamepadUI() then
+        Z.db.hinted=true
+        Z.Print(L.HINT)
+    end
 end
 
 -- Frequent world events only mark the queue stale; OnUpdate rebuilds once.
@@ -268,24 +317,7 @@ Z.frame:SetScript("OnUpdate",function(_,dt)
     if Z.runtimeInactive or not started then return end
     elapsed,cleanupElapsed=elapsed+dt,cleanupElapsed+dt
     -- Range has no event, so rescan every 0.2 s; stale events rescan next frame.
-    if elapsed>=0.2 then elapsed=0 Z.oneShotReady=true Z.Refresh()
+    if elapsed>=0.2 then elapsed=0 Z.Refresh()
     elseif dirty then Z.Refresh() end
     if cleanupElapsed>=60 then cleanupElapsed=0 cleanup() end
 end)
-SLASH_ZEUS1="/zeus"
-SlashCmdList.ZEUS=function(msg)
-    if not started then return end
-    msg=(msg or ""):lower():match("^%s*(.-)%s*$")
-    if msg=="toggle" then Z.ToggleZEUS() return end
-    if msg=="report" then Z.PrintBuffReport() return end
-    if msg=="debug" or msg=="status" then
-        Z.Print(string.format("v%s | %s | %s | key %s | edges down/up %d/%d | attempts %d | successes %d",
-            Z.version,Z.class,Z.db.dualEdge and "both edges" or "release only",Z.db.key or "unbound",
-            Z.diag.down,Z.diag.up,Z.diag.attempts,Z.diag.successes))
-        Z.Print(Z.diag.last)
-    elseif msg=="input release" or msg=="input both" then
-        if InCombatLockdown() then Z.Print("Leave combat before changing input mode.") return end
-        Z.db.dualEdge=msg=="input both"
-        Z.Print(Z.db.dualEdge and "Both-edge input enabled; verify with /zeus debug." or "Release-only compatibility mode enabled.")
-    else Z.ToggleSettings() end
-end

@@ -1,6 +1,11 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
     <Script file="EmbeddedNamespace.lua"/>
     <Script file="../Edition.lua"/>
+    <Script file="../Locales.lua"/>
+    <Script file="../Locales/deDE.lua"/>
+    <Script file="../Locales/esES.lua"/>
+    <Script file="../Locales/frFR.lua"/>
+    <Script file="../Locales/ptBR.lua"/>
     <Script file="../Bootstrap.lua"/>
     <Script file="../Libs/LibStub.lua"/>
     <Script file="../Libs/CallbackHandler-1.0.lua"/>
@@ -12,8 +17,11 @@
     <Script file="../OlympusPolicy.lua"/>
     <Script file="../Reporting.lua"/>
     <Script file="../OlympusAPI.lua"/>
+    <Script file="../GamepadRegistry.lua"/>
+    <Script file="../Gamepad.lua"/>
     <Script file="../Core.lua"/>
     <Script file="../Auras.lua"/>
+    <Script file="../Blockers.lua"/>
     <Script file="../Queue.lua"/>
     <Script file="../Buttons.lua"/>
     <Script file="../Nameplates.lua"/>

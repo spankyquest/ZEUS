@@ -24,10 +24,19 @@ end
 function Z.ProfileDuration(p)
     return p.duration * (p.blessing and Z.Known(BLESSING_DURATION_PASSIVE) and 2 or 1)
 end
+-- Buff names in the game's language: English clients keep the profile's label; others use the
+-- client's own name for the spell (the label spell, or the strongest rank).
+local function localLabel(p)
+    p.englishLabel = p.englishLabel or p.label
+    local code = Z.language and Z.language.code
+    if not code or code == "enUS" or code == "enGB" then return p.englishLabel end
+    return Z.SpellName(p.labelSpell or p.ranks[1][1], p.englishLabel)
+end
 function Z.RefreshSpells()
     Z.active = {}
     for _, p in ipairs(Z.profiles) do
         if p.class == Z.class then
+            p.label = localLabel(p)
             p.learned, p.names = {}, {}
             for id in pairs(p.ids) do
                 local name = Z.SpellName(id)

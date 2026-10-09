@@ -1,6 +1,7 @@
 local _, Z = ...
 Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
+local L = Z.L
 local buffClick="/click ZEUSMacroBuffButton LeftButton"
 local buffMarker="#ZEUS-BUFF\n"
 local definitions={
@@ -42,8 +43,10 @@ local function capacity()
 end
 -- Runs when the armed recipient changes. Z.buffMacroStale asks the next
 -- refresh to try again after combat or a failed edit.
-function Z.SyncBuffMacro()
+function Z.SyncBuffMacro() -- gp:macros
     if InCombatLockdown() then Z.buffMacroStale=true return end
+    -- With the gamepad UI the macro is left plain; switching back syncs it again.
+    if not Z.Allowed("macros") then return end
     if not GetMacroInfo or not EditMacro then return end
     local body,guid=buffBody()
     local found,verified=false,false
@@ -66,21 +69,22 @@ function Z.ScheduleBuffMacroSync()
     -- Do not rewrite a macro between its target command and receiver click.
     C_Timer.After(0,function() syncPending=false Z.SyncBuffMacro() end)
 end
-function Z.EnsureToggleMacro(kind)
+function Z.EnsureToggleMacro(kind) -- gp:macros
     kind=kind or "toggle"
     local definition=definitions[kind]
     local body,toggleIcon=definition.body,definition.icon
     if kind=="buff" then body=buffBody() end
-    if InCombatLockdown() then Z.Print("Leave combat before adding a macro to your action bar.") return false end
+    if not Z.Allowed("macros") then Z.Print(Z.GAMEPAD_PAUSED) return false end
+    if InCombatLockdown() then Z.Print(L.NO_COMBAT_MACRO) return false end
     if GetCursorInfo and GetCursorInfo() then
-        Z.Print("Place or clear what's on your cursor first.") return false
+        Z.Print(L.CURSOR_BUSY) return false
     end
     if not (GetMacroInfo and CreateMacro and GetNumMacros) then
-        Z.Print("Open the game's Macros window and create a macro containing "..body..".") return false
+        Z.Print(string.format(L.MAKE_MACRO,body)) return false
     end
     local accountMax,characterMax=limits()
     if not accountMax or not characterMax then
-        Z.Print("Open the game's Macros window and create a macro containing "..body..".") return false
+        Z.Print(string.format(L.MAKE_MACRO,body)) return false
     end
     local names,index,createdHere={},nil,false
     local function compatible(text)
@@ -95,43 +99,43 @@ function Z.EnsureToggleMacro(kind)
         local accountCount,characterCount=GetNumMacros()
         local perCharacter=characterCount<characterMax
         if not perCharacter and accountCount>=accountMax then
-            Z.Print("Your macro slots are full. Free a slot, then try again.") return false
+            Z.Print(L.MACROS_FULL) return false
         end
         local name=definition.name
         local suffix=2
         while names[name] do name=definition.name.." "..suffix suffix=suffix+1 end
         local ok,result=pcall(CreateMacro,name,toggleIcon,body,perCharacter)
         if not ok or type(result)~="number" or result<=0 then
-            Z.Print("Macro creation failed: "..tostring(result)..". Create one manually with "..body..".") return false
+            Z.Print(string.format(L.MACRO_CREATE_FAILED,tostring(result),body)) return false
         end
         index=result
         createdHere=true
     end
     local name,icon,text=GetMacroInfo(index)
-    if not compatible(text) then Z.Print("Could not verify the ZEUS macro. Try again.") return false end
+    if not compatible(text) then Z.Print(L.MACRO_VERIFY_FAILED) return false end
     -- Earlier versions wrote a texture path which may produce a blank icon.
     -- Commit only the verified ZEUS macro, preserving its name and scope.
     if text~=body or not validIcon(icon) or (kind=="buff" and icon~=definition.icon) or (createdHere and EditMacro) then
-        if not EditMacro then Z.Print("Choose an icon for "..name.." in /macro, then Save.") return false end
+        if not EditMacro then Z.Print(string.format(L.MACRO_PICK_ICON,name)) return false end
         local ok,result=pcall(EditMacro,index,nil,toggleIcon,body)
-        if not ok then Z.Print("Could not save the ZEUS macro: "..tostring(result)) return false end
+        if not ok then Z.Print(string.format(L.MACRO_SAVE_FAILED,tostring(result))) return false end
         if type(result)=="number" and result>0 then index=result end
         local savedName,savedIcon,savedBody=GetMacroInfo(index)
         if savedName~=name or not validIcon(savedIcon) or savedBody~=body then
-            Z.Print("Could not verify the saved ZEUS macro. Choose an icon in /macro and Save.") return false
+            Z.Print(L.MACRO_SAVE_VERIFY) return false
         end
     end
     if kind=="buff" then Z.SyncBuffMacro() end
     return index
 end
-function Z.PrepareToggleMacroButton(button,kind)
+function Z.PrepareToggleMacroButton(button,kind) -- gp:macros
     if InCombatLockdown() then return false end
     local index=Z.EnsureToggleMacro(kind)
     button:SetAttribute("zeus-macro",index or nil)
     return index
 end
-function Z.OpenToggleMacroFallback(index,kind)
-    if InCombatLockdown() or (GetCursorInfo and GetCursorInfo()) then return false end
+function Z.OpenToggleMacroFallback(index,kind) -- gp:macros
+    if InCombatLockdown() or (GetCursorInfo and GetCursorInfo()) or not Z.Allowed("macros") then return false end
     local name,_,text=GetMacroInfo(index)
     if not name or not matches(text,kind) then return false end
     -- Use the game's own macro window when this client refuses GUI pickup.
@@ -144,39 +148,39 @@ function Z.OpenToggleMacroFallback(index,kind)
             opened=ok and MacroFrame:IsShown()
         end
     end
-    Z.Print((opened and "Drag " or "Open /macro and drag ")..'"'..name..'" from the Macros window onto your action bar.')
+    Z.Print(string.format(opened and L.MACRO_DRAG_OPENED or L.MACRO_DRAG_OPEN,name))
     return opened
 end
 function Z.CheckMacroPickup(ok,err,index,source,kind)
     if not ok then
-        Z.Print((source or "Click").." macro pickup failed: "..tostring(err)..".")
+        Z.Print(string.format(L.PICKUP_FAILED,tostring(err)))
         if index then Z.OpenToggleMacroFallback(index,kind) end
         return false
     end
     if GetCursorInfo then
         local cursorKind=GetCursorInfo()
         if cursorKind~="macro" then
-            Z.Print((source or "Click").." macro pickup returned cursor type "..tostring(cursorKind).."; expected macro.")
+            Z.Print(string.format(L.PICKUP_WRONG,tostring(cursorKind)))
             if index and not cursorKind then Z.OpenToggleMacroFallback(index,kind) end
             return false
         end
     end
     return true
 end
-function Z.PickupToggleMacro(kind)
+function Z.PickupToggleMacro(kind) -- gp:macros
     local index=Z.EnsureToggleMacro(kind)
     if not index then return false end
-    if type(PickupMacro)~="function" then Z.Print("Macro pickup API is unavailable.") return false end
+    if type(PickupMacro)~="function" then Z.Print(L.PICKUP_UNAVAILABLE) return false end
     local ok,err=pcall(PickupMacro,index)
     return Z.CheckMacroPickup(ok,err,index,"Click",kind)
 end
-function Z.ConfigureToggleMacroButton(button,kind)
+function Z.ConfigureToggleMacroButton(button,kind) -- gp:macros
     button:SetAttribute("_ondragstart", [[
         if (button and button ~= "LeftButton") or kind or self:GetAttribute("state-combat") == "combat" then return end
         local index = self:GetAttribute("zeus-macro")
         if index then return "macro", index end
     ]])
-    RegisterStateDriver(button,"combat","[combat] combat; clear")
+    RegisterStateDriver(button,"combat","[combat] combat; clear") -- gp:state-driver
     button:SetScript("OnMouseDown",function(self,mouse)
         self.dragged=nil
         if mouse=="LeftButton" then Z.PrepareToggleMacroButton(self,kind) end
@@ -208,3 +212,19 @@ function Z.ConfigureToggleMacroButton(button,kind)
         self:SetAttribute("zeus-macro",index)
     end)
 end
+-- Gamepad switches (Gamepad.lua): the Buff macro goes back to its plain form, so it names
+-- nobody while ZEUS is paused, and is brought up to date again on the way back.
+local function plainBuffMacros() -- gp:macros!undo
+    if not GetMacroInfo or not EditMacro then return end
+    for i=1,capacity() do
+        local _,_,text=GetMacroInfo(i)
+        if matches(text,"buff") and text~=definitions.buff.body then
+            pcall(EditMacro,i,nil,definitions.buff.icon,definitions.buff.body)
+        end
+    end
+    Z.buffMacroGUID=nil
+end
+Z.GamepadHooks("macros",{
+    park=function() Z.OutOfCombat(function() if Z.GamepadUI() then plainBuffMacros() end end) end,
+    install=function() Z.SyncBuffMacro() end,
+})

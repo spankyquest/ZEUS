@@ -47,7 +47,8 @@ profile("breath", "WARLOCK", "Unending Breath", 600, {{5697,1}},
     {cover={131}})
 profile("detect", "WARLOCK", "Detect Invisibility", 600,
     {{11743,1},{2970,1},{132,1}},
-    {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN SHAMAN DRUID"})
+    {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN SHAMAN DRUID"},
+    {labelSpell=2970})
 profile("waterbreathing", "SHAMAN", "Water Breathing", 600, {{131,1}},
     {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN","DRUID","WARLOCK"},
     {cover={5697}, reagent=17057})

@@ -3,7 +3,9 @@ Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
 function Z.Safe(v) return not (issecretvalue and issecretvalue(v)) end
 -- Explicit target/mouseover first; class relevance and then lower level.
-local SORT_KEYS = {"intent","priority","level","state","remaining","order"}
+-- Players marked out of sight (Queue.lua) come after everyone in sight, even a target: the
+-- rest of the queue is finished before they are tried again.
+local SORT_KEYS = {"los","intent","priority","level","state","remaining","order"}
 function Z.Compare(a, b)
     for i = 1, #SORT_KEYS do
         local k = SORT_KEYS[i]
@@ -16,13 +18,16 @@ function Z.Suppressed(db, guid, key, now)
     local records = db.memory[guid]
     local r = records and records[key]
     if not r then return false end
+    -- A bounce hold (Blockers.lua) lasts to its expiration, not to the refresh window.
+    if r.blockedBy then return now < (tonumber(r.expires) or 0) end
     -- Recompute from the original cast when the slider changes. Absence of an
     -- aura NEVER erases this record; only observed death or expiration does.
     return r.expires and r.duration and now < r.expires - r.duration * db.refresh / 100
 end
-function Z.Remember(db, guid, key, now, duration, expires)
+-- blockedBy: aura IDs that bounced this buff; the player is held while one is present.
+function Z.Remember(db, guid, key, now, duration, expires, blockedBy)
     db.memory[guid] = db.memory[guid] or {}
-    db.memory[guid][key] = {cast=now, duration=duration, expires=expires or now+duration}
+    db.memory[guid][key] = {cast=now, duration=duration, expires=expires or now+duration, blockedBy=blockedBy}
 end
 -- Older builds stored bounce deadlines without a duration. Preserve the
 -- expiration and use the same learned/profile fallback as new bounce records.

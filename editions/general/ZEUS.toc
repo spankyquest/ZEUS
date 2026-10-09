@@ -1,6 +1,11 @@
 ## Interface: 16001
 ## Title: ZEUS - Zero Effort Utility Spamming
-## Notes: Power your allies. Hand out buffs to players you pass across Azeroth. Press your Buff Key or macro to buff nearby friendly players.
+## Notes: One-button buffing with auto-targeting. Press your Buff Key or macro and ZEUS buffs the next nearby player who needs it.
+## Notes-deDE: Buffen mit einer Taste und automatischer Zielwahl. Drück deine Buff-Taste oder dein Makro und ZEUS bufft den nächsten Spieler in der Nähe, der einen Buff braucht.
+## Notes-esES: Buffs con un solo botón y selección automática de objetivo. Pulsa tu tecla de buff o tu macro y ZEUS bufea al siguiente jugador cercano que lo necesite.
+## Notes-esMX: Buffs con un solo botón y selección automática de objetivo. Pulsa tu tecla de buff o tu macro y ZEUS bufea al siguiente jugador cercano que lo necesite.
+## Notes-frFR: Des buffs en un seul bouton, avec ciblage automatique. Appuie sur ta touche de buff ou ta macro et ZEUS buffe le prochain joueur proche qui en a besoin.
+## Notes-ptBR: Buffs com um botão só e alvo automático. Aperte sua tecla de buff ou a macro e o ZEUS buffa o próximo jogador por perto que precisar.
 ## Author: SpankyQuest
 ## X-License: MIT
 ## OptionalDeps: ZEUS_Olympus
@@ -9,6 +14,11 @@
 ## IconTexture: Interface\Icons\Spell_Nature_Lightning
 
 Edition.lua
+Locales.lua
+Locales/deDE.lua
+Locales/esES.lua
+Locales/frFR.lua
+Locales/ptBR.lua
 Bootstrap.lua
 
 Libs/LibStub.lua
@@ -20,8 +30,11 @@ Data.lua
 Policy.lua
 Priorities.lua
 Reporting.lua
+GamepadRegistry.lua
+Gamepad.lua
 Core.lua
 Auras.lua
+Blockers.lua
 Queue.lua
 Buttons.lua
 Nameplates.lua

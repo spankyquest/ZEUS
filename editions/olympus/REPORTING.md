@@ -1,4 +1,4 @@
-# ZEUS 0.4.9: total buff-hours provided
+# ZEUS: total buff-hours provided
 
 Run `/zeus report` to see the lifetime total and today's UTC total. Unmeasured
 successful casts are shown separately and earn no guessed hours.
@@ -93,7 +93,9 @@ clock and reports can be modified; do not treat them as verified reward evidence
 ## Guild-filtered edition
 ZEUSOlympusAPI is an alias for the same v3 reporting API. It also exposes the
 existing SetGuildEligibilityProvider method. The export includes `policy`, the
-active policy at export time, not historical proof of each cast's guild policy.
+active policy at export time, not historical proof of each cast's guild policy:
+a provider's label, "olympus-bridge" when Olympus answers through its bridge, or
+the bundled snapshot's "olympus-<commit>-builtin".
 Only recipients passing the guild filter are credited, for ZEUS casts and buffs you
 cast yourself alike; a manual cast on a player who cannot be read is not reported. See INTEGRATION.md for the
 standalone snapshot limitation and optional host adapter.

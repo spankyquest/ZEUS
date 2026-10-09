@@ -1,112 +1,105 @@
-# ZEUS — Zero Effort Utility Spamming
+# ZEUS Olympus — Zero Effort Utility Spamming
 
-**By SpankyQuest · 0.4.9 Beta · World of Warcraft: Forever · Interface 16001**
+**By SpankyQuest · 0.5.1 · World of Warcraft: Forever**
 
-**Power your allies. Crush your enemies.** ZEUS turns your class buffs into
-an advantage for the players you pass across Azeroth. Gear up
-your side between fights. Send them back into battle stronger.
+**Power your allies. Crush your enemies.**
 
-Choose your buffs, enable friendly nameplates, and press your Buff Key or action-bar
-macro repeatedly. ZEUS queues nearby eligible players and prepares the next action
-outside combat. Every selection and cast requires your input; it never casts on its own.
-ZEUS follows your chosen class priorities when choosing who to buff next.
+ZEUS Olympus turns buffing your guildmates into one button. Press your Buff Key (or
+scroll the mouse wheel, or spam the macro) and it finds the next Olympus guild
+member nearby who's missing your buff, targets them and casts it. Keep pressing and
+everyone in the city walks away buffed. It's a nice perk for being in an Olympus guild.
 
-This edition buffs members of eligible Olympus guilds. It works without the
-Olympus addon, using a bundled policy snapshot. Live approvals and moderation
-require the optional host adapter; see [INTEGRATION.md](INTEGRATION.md).
+It's as close to auto-buffing as the game allows. Blizzard doesn't let addons cast
+by themselves, so each buff still takes a press. ZEUS does the rest: the targeting,
+picking the right rank, and remembering who already has it.
 
-## Features
+It knows which guilds belong to Olympus by itself, so you don't need the Olympus
+Guild addon installed, but it works alongside it.
 
-- Choose a Buff Key or drag the Buff macro from settings to your action bar. While choosing,
-  press a key, or click any mouse button or scroll anywhere on screen to bind it.
-- Bind Mouse Wheel Up or Down to buff as you scroll. While ZEUS is enabled, reverse scrolling is blocked to prevent camera zoom. Turning ZEUS off restores your normal wheel bindings.
-- Select learned spells and customize class priority with draggable tiles.
-- Set the refresh threshold from 0% to 99%; upgrade known lower-rank buffs sooner.
-- Attempt all selected eligible buffs for a recipient before moving on.
-- Keep PvP protection enabled to skip flagged players while you are unflagged.
-- Track the buff-hours you give with `/zeus report`, counting only the time each buff adds, whether ZEUS or your own spell button cast it.
+## What it does
 
-## Install
+- **Auto-targeting.** Your target or mouseover comes first, then the Olympus
+  members around you, in the class order you set. Arcane Intellect goes to casters
+  before hunters, Might goes to warriors and rogues, and so on.
+- **Olympus members only.** Players outside Olympus guilds are skipped.
+- **The right rank.** Low-level players get a rank they can take, and anyone with
+  a weaker rank of your buff gets an upgrade.
+- **All your buffs at once.** A player gets everything you've ticked before ZEUS
+  moves on.
+- **Rebuffs on time.** You pick how low a buff gets before ZEUS tops it up.
+- **Doesn't get stuck.** Players behind a wall wait until everyone in sight is done.
+  If the game says "A more powerful spell is already active", ZEUS works out which
+  buff got in the way and leaves that player alone until it's gone.
+- **Stays out of PvP trouble.** Skips PvP-flagged players while you're not flagged.
+- **Buff-hours.** `/zeus report` adds up how much buff time you've handed out to
+  your guildmates.
+- **Your language.** English, Deutsch, Español, Français and Português (Brasil).
 
-1. Use one active edition. If both updated editions are enabled, Olympus runs and
-   General stays inactive; a dialog asks you to disable or uninstall one.
-2. Replace the entire ZEUS_Olympus folder in your Forever installation's `Interface/AddOns`.
-3. Confirm the path is `Interface/AddOns/ZEUS_Olympus/ZEUS_Olympus.toc`.
-4. Restart the client or use `/reload` when updating an already installed copy.
-5. Type `/zeus`, select your buffs, and bind a key or drag Buff to your action bar.
+Paladins hand out one blessing per player, picked by class: Might for warriors and
+rogues, Wisdom for casters, Kings for hunters, druids and shamans.
 
-## Controls
+## Getting started
 
-| Control | Action |
+1. Install ZEUS Olympus with the CurseForge app, or unzip it into
+   `Interface/AddOns` so you end up with
+   `Interface/AddOns/ZEUS_Olympus/ZEUS_Olympus.toc`.
+2. In game, type `/zeus`.
+3. Click **Choose a key...** and press the key you want, or click a mouse button or
+   scroll the wheel. (Or drag the **Buff** icon onto your action bar.)
+4. Click **Turn ZEUS on**. It switches on friendly nameplates (Shift+V), because
+   that's how it sees the players around you.
+5. Head somewhere your guild hangs out and press your key.
+
+**Tip:** bind the mouse wheel and you can buff a whole town just by scrolling.
+While ZEUS is on, scrolling the other way won't zoom your camera; turn ZEUS off to
+get your zoom back.
+
+**Tip:** the Buff macro works with ZEUS off too. Spam it and ZEUS (and friendly
+nameplates) switch on while you're pressing, then off again a few seconds after you
+stop. Your Buff Key keeps its normal job the whole time.
+
+## Commands
+
+| Command | What it does |
 | --- | --- |
-| `/zeus` or minimap left-click | Open settings |
-| `/zeus toggle` or minimap right-click | Enable or disable ZEUS |
-| `/zeus report` | Total buff-hours provided and today's UTC total |
-| `/zeus debug` | Input and casting diagnostics |
-| Minimap drag | Reposition the button |
-| Unlock beside a spell | Edit its class tiles |
-| Drag a class tile | Change its priority; leftmost is first |
-| Right-click an unlocked tile | Enable or disable that target class |
-| Reset beside Buff Key | Clear ZEUS's key override |
+| `/zeus` | Settings (or left-click the minimap button) |
+| `/zeus toggle` | Turn ZEUS on or off (or right-click the minimap button) |
+| `/zeus report` | Your buff-hours, total and today |
+| `/zeus blockers` | Buffs ZEUS has learned get in the way of yours; `/zeus blockers clear` forgets them |
+| `/zeus debug` | Info for bug reports |
 
-Friendly nameplates are required for the world queue. Shift+V controls their
-visibility independently. ZEUS only hides nameplates it enabled. Using Buff while
-ZEUS is disabled starts a temporary run; keep pressing until the queue empties,
-then it switches off. If ZEUS is enabled but nameplates are hidden, Buff prints a
-reminder to use Shift+V. Combat restrictions can defer key-binding restoration.
+## Settings
 
-## Buff-hour reports
+- **Buffs:** tick the ones you want handed out.
+- **Class order:** click **Unlock** next to a buff, then drag the class tiles
+  (leftmost goes first) or right-click one to skip that class.
+- **Rebuff slider:** how much of a buff should be left before ZEUS refreshes it.
+  At 0% it waits until the buff runs out.
+- **PvP protection:** on by default.
 
-`/zeus report` shows the hours of buffs you've given. Only the time a cast adds
-counts: refreshing a 30-minute buff at 99% remaining adds **0.005 buff-hours**
-(18 seconds); at 10% remaining it adds **0.45** (27 minutes).
-Buffs you cast yourself on Olympus guild members count too, including group
-buffs such as Arcane Brilliance (each eligible member who receives it). Buffs on yourself don't count.
-ZEUS credits only duration confirmed by the updated aura. Unmeasured
-successful casts are shown separately. This measures time added at application,
-not uptime retained after death or dispels. Reports are client-reported.
-Old raw cast counts are archived separately. See [REPORTING.md](REPORTING.md).
+## Buff-hours
 
-## Compatibility and support
+`/zeus report` shows how many hours of buffs you've given your guildmates. Only the
+time a cast actually adds counts: topping up a 30-minute buff that still has 99%
+left adds 18 seconds, not 30 minutes. Buffs you cast yourself count too, and a group
+buff counts once for each Olympus member it reaches. Buffs on yourself don't. The
+numbers are kept on your computer only. The details are in [REPORTING.md](REPORTING.md).
 
-Targets Forever interface 16001. Do not assume compatibility with Retail, Classic
-Era, or other flavors. ZEUS is in beta: casting, aura timing, and interface
-behavior are still being verified in game on the release client.
+## Good to know
 
-For bug reports, include the ZEUS version and variant, game build, class, selected
-buffs, reproduction steps, `/zeus debug` output, and any Lua error. Never include
-your complete saved variables unless you have checked them for private data.
+- ZEUS is made for WoW Forever. It isn't built for Retail or Classic Era.
+- It never casts by itself, and it pauses in combat.
+- With the gamepad UI on, ZEUS takes a break and comes back when you switch to
+  mouse and keyboard.
+- Installed both ZEUS and ZEUS Olympus? Only ZEUS Olympus runs, and a popup reminds
+  you to remove one.
+- Found a bug? Open an issue with your ZEUS version, your class, what happened, the
+  `/zeus debug` output and any Lua error.
+- Olympus Guild developers: [INTEGRATION.md](INTEGRATION.md) explains how the two
+  addons fit together.
 
-## License and credits
+## License
 
-ZEUS code and project artwork: MIT, copyright 2026 SpankyQuest. Bundled libraries
-retain their original terms and author notices; see [THIRD_PARTY.md](THIRD_PARTY.md).
-The guild classifier includes MIT-licensed Olympus code; its original copyright
-notice is retained in OLYMPUS-LICENSE.txt.
-
-## Both editions installed
-
-Update both editions to 0.4.3 or newer for supported coexistence. The Olympus
-edition wins regardless of which files load first. General creates no active
-casting buttons or bindings. Dismiss the dialog with OK, then disable or uninstall
-one edition and reload. Dismissing it does not switch the active edition. A
-disabled addon does not count as an active conflict.
-
-## Upgrading from the old directory
-
-The old Olympus build was installed in ZEUS. Remove that old addon folder before
-installing this release into ZEUS_Olympus, unless replacing it with the updated
-General release. Do not keep an older General/old-directory build active alongside
-this release; those versions do not implement arbitration.
-
-Olympus now saves per-character settings to ZEUSOlympusDB. When a legacy ZEUSDB
-is already loaded and no Olympus save exists, settings/history are copied once.
-Existing Olympus saves always win, and General's saved table is never modified.
-
-For an Olympus-only upgrade that must retain the old save: exit the game and back
-up the character's WTF/Account/.../<realm>/<character>/SavedVariables folder. Copy
-ZEUS.lua to ZEUS_Olympus.lua, then change its top-level assignment from ZEUSDB =
-to ZEUSOlympusDB =. Do not overwrite an existing ZEUS_Olympus.lua. This rename is
-needed because the client will not load an uninstalled addon's saved file.
-
-Wheel bindings also support modifiers. ZEUS blocks the opposite direction both without modifiers and with the matching modifier combination. Changing to a keyboard binding or clearing the Buff Key removes the wheel block. Binding changes and toggles require leaving combat.
+MIT, © 2026 SpankyQuest. The guild check includes MIT-licensed code from Olympus
+Guild, with its original notice in OLYMPUS-LICENSE.txt. The bundled libraries keep
+their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md).

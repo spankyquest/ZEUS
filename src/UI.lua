@@ -1,6 +1,7 @@
 local _, Z = ...
 Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
+local L = Z.L
 local settings, minimap, capture, catcher, bindButton, status, thresholdText, warning, enableButton
 local rows, pendingKey = {}, nil
 local slider
@@ -69,7 +70,7 @@ local function check(parent,text,x,y,fn)
     b:SetScript("OnClick",function(self) fn(self:GetChecked() and true or false,self) end)
     return b
 end
-local function tooltip(control,text)
+local function tooltip(control,text) -- gp:tooltips
     control:SetScript("OnEnter",function(self)
         GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
         GameTooltip:AddLine(text,0.9,0.9,0.9,true)
@@ -79,32 +80,32 @@ local function tooltip(control,text)
 end
 function Z.UpdateStatus()
     if not status then return end
-    if enableButton then enableButton:SetText(Z.IsEnabled() and "Disable ZEUS" or "Enable ZEUS") end
+    if enableButton then enableButton:SetText(Z.IsEnabled() and L.TURN_OFF or L.TURN_ON) end
     local text
-    if not Z.IsEnabled() then text="Disabled — click Enable ZEUS to start."
-    elseif not Z.FriendsEnabled() then text="ZEUS requires friendly nameplates — press Shift+V."
-    elseif InCombatLockdown() then text="Paused in combat"
-    elseif #Z.active==0 then text="No supported buffs for this class."
+    if not Z.IsEnabled() then text=L.STATUS_OFF
+    elseif not Z.FriendsEnabled() then text=L.STATUS_NEEDS_PLATES
+    elseif InCombatLockdown() then text=L.STATUS_COMBAT
+    elseif #Z.active==0 then text=L.NO_BUFFS
     elseif Z.current then
         local c=Z.current
-        text=(c.inspect and "Checking: " or "Next: ")..c.name
-    else text="Ready — no buffs needed nearby." end
+        text=string.format(c.inspect and L.STATUS_CHECKING or L.STATUS_NEXT,c.name)
+    else text=L.STATUS_READY end
     status:SetText(text)
 end
 function Z.RefreshSettings()
     if not settings then return end
-    bindButton:SetText(Z.db.key or "Choose a key...")
+    bindButton:SetText(Z.db.key or L.CHOOSE_KEY)
     for i,p in ipairs(Z.active) do
         local row=rows[i]
         if row then
             row:SetChecked(Z.db.enabled[p.key]~=false)
             local learned=#p.learned>0
-            row.caption:SetText(p.label..(learned and "" or "  |cff888888Not learned|r"))
+            row.caption:SetText(p.label..(learned and "" or "  |cff888888"..L.NOT_LEARNED.."|r"))
             row:SetEnabled(learned)
         end
     end
-    thresholdText:SetText(Z.db.refresh==0 and "Rebuff: after expiration"
-        or "Rebuff at "..Z.db.refresh.."% remaining")
+    thresholdText:SetText(Z.db.refresh==0 and L.REBUFF_EXPIRED
+        or string.format(L.REBUFF_AT,Z.db.refresh))
     if slider:GetValue()~=Z.db.refresh then slider:SetValue(Z.db.refresh) end
     for _,editor in pairs(Z.priorityEditors) do editor.render() end
     Z.UpdateStatus()
@@ -131,40 +132,60 @@ local function chooseKey(key)
     end
     key=modifiers(key)
     if key=="BUTTON1" or key=="BUTTON2" then
-        capture.info:SetText("Choose another key, or add a modifier to the left/right mouse button.") return
+        capture.info:SetText(L.KEY_MOUSE_TAKEN) return
     end
     local bound=GetBindingAction and GetBindingAction(key,true) or ""
     if bound and bound~="" and bound~="CLICK ZEUSBuffButton:LeftButton" then
         pendingKey=key
         local display=GetBindingText and GetBindingText(bound,"BINDING_NAME_") or bound
-        capture.info:SetText(key.." is assigned to "..display..".\nUse it for ZEUS while this addon is enabled?")
+        capture.info:SetText(string.format(L.KEY_IN_USE,key,display))
         capture.confirm:Show()
         return
     end
     if Z.SetKey(key) then Z.CancelCapture() Z.RefreshSettings() end
 end
 local function captureKey()
-    if InCombatLockdown() then Z.Print("Leave combat before changing the Buff Key.") return end
+    if InCombatLockdown() then Z.Print(L.NO_COMBAT_KEY) return end
     pendingKey=nil
     capture.confirm:Hide()
-    capture.info:SetText("Press a key, or click or scroll anywhere on screen to bind a mouse input. "
-        .."Hold Ctrl, Alt, or Shift for a combination.\nEscape cancels. Backspace / Delete clears the binding.")
+    capture.info:SetText(L.KEY_PROMPT)
     catcher:Show()
     capture:Show()
     capture:EnableKeyboard(true)
     if capture.SetPropagateKeyboardInput then capture:SetPropagateKeyboardInput(false) end
 end
-function Z.ToggleSettings()
+function Z.ToggleSettings() -- gp:settings
     if settings:IsShown() then Z.CancelCapture() settings:Hide()
+    elseif not Z.Allowed("settings") then Z.Print(Z.GAMEPAD_PAUSED)
     else settings:Show() Z.RefreshSettings() end
 end
+-- The Escape list (UISpecialFrames): ZEUS's name is added only where the gamepad gate allows,
+-- and taken off at a switch when it is still last (an earlier entry stays until a /reload).
+local ESCAPE="ZEUSSettings"
+local function escapeOn()
+    if not Z.Allowed("escape-list") then return end
+    for _,name in ipairs(UISpecialFrames) do if name==ESCAPE then return end end -- gp:escape-list
+    tinsert(UISpecialFrames,ESCAPE) -- gp:escape-list
+end
+local function escapeOff() -- gp:escape-list!undo
+    local list=UISpecialFrames
+    local listed=false
+    for _,name in ipairs(list) do if name==ESCAPE then listed=true end end
+    if not listed then return end
+    if list[#list]==ESCAPE then table.remove(list) else Z.GamepadLeftover("escape-list") end
+end
+Z.GamepadHooks("escape-list",{park=escapeOff,install=escapeOn})
+Z.GamepadHooks("settings",{park=function() -- gp:settings!undo
+    Z.CancelCapture()
+    if settings and settings:IsShown() then settings:Hide() end
+end})
 function Z.UpdateMinimap()
     if minimap then
         minimap.icon:SetDesaturated(not Z.IsEnabled())
         if minimap.hovered then minimap:GetScript("OnEnter")(minimap) end
     end
 end
-local function createMinimap()
+local function createMinimap() -- gp:minimap
     local ldb=LibStub("LibDataBroker-1.1")
     local icons=LibStub("LibDBIcon-1.0")
     local broker=ldb:GetDataObjectByName("ZEUS") or ldb:NewDataObject("ZEUS",{
@@ -175,24 +196,25 @@ local function createMinimap()
         if mouse=="LeftButton" then Z.ToggleSettings()
         elseif mouse=="RightButton" then Z.ToggleZEUS() end
     end
-    broker.OnEnter=function(self)
+    broker.OnEnter=function(self) -- gp:tooltips
         self.hovered=true
         GameTooltip:ClearLines()
         GameTooltip:SetOwner(self,"ANCHOR_LEFT")
         GameTooltip:AddLine("ZEUS",1,0.82,0.4)
-        GameTooltip:AddLine("ZEUS: currently "..(Z.IsEnabled() and "enabled" or "disabled"),1,1,1)
-        GameTooltip:AddLine("Friendly nameplates: "..(Z.FriendsEnabled() and "visible" or "hidden"),0.8,0.8,0.8)
-        if not Z.IsEnabled() then
-            GameTooltip:AddLine(Z.bindingPending and "ZEUS disabled; key released after combat" or "ZEUS disabled; buff key released",0.8,0.8,0.8)
+        GameTooltip:AddLine(Z.IsEnabled() and L.MINIMAP_ON or L.MINIMAP_OFF,1,1,1)
+        GameTooltip:AddLine(Z.FriendsEnabled() and L.MINIMAP_PLATES_SHOWN or L.MINIMAP_PLATES_HIDDEN,0.8,0.8,0.8)
+        if not Z.BindingWanted() then
+            GameTooltip:AddLine(Z.bindingPending and L.MINIMAP_KEY_AFTER_COMBAT or L.MINIMAP_KEY_RELEASED,0.8,0.8,0.8)
         end
-        GameTooltip:AddLine("Left-click: open settings",0.8,0.8,0.8)
-        GameTooltip:AddLine("Right-click: "..(Z.IsEnabled() and "disable" or "enable").." ZEUS",0.8,0.8,0.8)
-        GameTooltip:AddLine("Drag: move this button",0.8,0.8,0.8)
-        GameTooltip:AddLine("Buff Key: "..(Z.db.key or "not set"),1,0.82,0.4)
-        if InCombatLockdown() then GameTooltip:AddLine("Paused in combat",0.7,0.85,1) end
+        GameTooltip:AddLine(L.MINIMAP_LEFT,0.8,0.8,0.8)
+        GameTooltip:AddLine(Z.IsEnabled() and L.MINIMAP_RIGHT_OFF or L.MINIMAP_RIGHT_ON,0.8,0.8,0.8)
+        GameTooltip:AddLine(L.MINIMAP_DRAG,0.8,0.8,0.8)
+        GameTooltip:AddLine(string.format(L.MINIMAP_KEY,Z.db.key or L.KEY_NOT_SET),1,0.82,0.4)
+        if InCombatLockdown() then GameTooltip:AddLine(L.STATUS_COMBAT,0.7,0.85,1) end
+        if Z.GamepadUI() then GameTooltip:AddLine(L.PAUSED_GAMEPAD,0.7,0.85,1) end
         GameTooltip:Show()
     end
-    broker.OnLeave=function() minimap.hovered=nil GameTooltip:Hide() end
+    broker.OnLeave=function() minimap.hovered=nil GameTooltip:Hide() end -- gp:tooltips
     if type(Z.db.minimap)~="table" then
         Z.db.minimap={minimapPos=Z.db.minimapAngle or 220}
     end
@@ -230,7 +252,7 @@ function Z.CreateUI()
         local p=Z.db.position
         settings:ClearAllPoints() settings:SetPoint(p[1],UIParent,p[2],p[3],p[4])
     end
-    tinsert(UISpecialFrames,"ZEUSSettings")
+    escapeOn()
     settings:SetScript("OnHide",Z.CancelCapture)
     title(settings,"ZEUS")
     local portrait=settings.portrait or settings.Portrait
@@ -245,27 +267,29 @@ function Z.CreateUI()
         pcall(portrait.SetMask,portrait,"Interface/CharacterFrame/TempPortraitAlphaMask")
     end
     settings.portrait=portrait
-    label(settings,"Power your allies. Crush your enemies.",72,-32,660,"GameFontNormalLarge")
-    label(settings,Z.tagline,72,-54,660)
+    label(settings,L.SLOGAN,72,-32,660,"GameFontNormalLarge")
+    local tagline=Z.tagline
+    if type(tagline)=="table" then tagline=tagline[Z.language.code] or tagline.enUS end
+    label(settings,tagline,72,-54,660)
     section(settings,14,-73,732,87)
-    label(settings,"BUFF KEY",25,-79,400,"GameFontNormal"):SetTextColor(unpack(gold))
-    bindButton=action(settings,"Choose a key...",25,-98,230,captureKey)
+    label(settings,L.BUFF_KEY,25,-79,400,"GameFontNormal"):SetTextColor(unpack(gold))
+    bindButton=action(settings,L.CHOOSE_KEY,25,-98,230,captureKey)
     Z.bindButton=bindButton
-    local resetKey=action(settings,"Reset",263,-98,64,function()
+    local resetKey=action(settings,L.RESET,263,-98,118,function()
         if Z.SetKey(nil) then Z.CancelCapture() Z.RefreshSettings() end
     end)
     Z.resetKeyButton=resetKey
-    tooltip(resetKey,"Clear the Buff Key and restore its normal binding.")
-    label(settings,"Tip: bind Mouse Wheel Up or Down to buff as you scroll. Toggle ZEUS off to restore zoom.",25,-135,710)
+    tooltip(resetKey,L.RESET_TIP)
+    label(settings,L.WHEEL_TIP,25,-135,710)
     local macro=CreateFrame("Button","ZEUSToggleMacroButton",settings,"SecureHandlerDragTemplate,SecureHandlerStateTemplate")
     macro:SetPoint("TOPLEFT",580,-92) macro:SetSize(36,36)
     macro:SetNormalTexture("Interface/Icons/Spell_Nature_Lightning")
     macro:SetHighlightTexture("Interface/Buttons/ButtonHilight-Square")
     macro:EnableMouse(true)
     macro:RegisterForClicks("LeftButtonUp") macro:RegisterForDrag("LeftButton")
-    label(settings,"Toggle ZEUS",624,-93,108,"GameFontNormal")
-    label(settings,"Drag to action bar",624,-111,108)
-    tooltip(macro,"Click or drag to place the ZEUS toggle macro on your action bar.")
+    label(settings,L.TOGGLE_MACRO,624,-93,108,"GameFontNormal")
+    label(settings,L.DRAG_TO_BAR,624,-111,108)
+    tooltip(macro,L.TOGGLE_MACRO_TIP)
     Z.ConfigureToggleMacroButton(macro)
     local buffMacro=CreateFrame("Button","ZEUSBuffMacroButton",settings,"SecureHandlerDragTemplate,SecureHandlerStateTemplate")
     buffMacro:SetPoint("TOPLEFT",390,-92) buffMacro:SetSize(36,36)
@@ -273,18 +297,18 @@ function Z.CreateUI()
     buffMacro:SetHighlightTexture("Interface/Buttons/ButtonHilight-Square")
     buffMacro:EnableMouse(true)
     buffMacro:RegisterForClicks("LeftButtonUp") buffMacro:RegisterForDrag("LeftButton")
-    label(settings,"Buff",434,-93,108,"GameFontNormal")
-    label(settings,"Drag to action bar",434,-111,108)
-    tooltip(buffMacro,"Drag to your action bar and press repeatedly. When ZEUS is off, runs one queue and switches off when finished.")
+    label(settings,L.BUFF_MACRO,434,-93,108,"GameFontNormal")
+    label(settings,L.DRAG_TO_BAR,434,-111,108)
+    tooltip(buffMacro,L.BUFF_MACRO_TIP)
     Z.ConfigureToggleMacroButton(buffMacro,"buff")
     local y=-175
     section(settings,14,-167,732,44)
-    label(settings,Z.class=="PALADIN" and "ALLOWED BLESSINGS" or "BUFFS",25,y,400,"GameFontNormal")
-    label(settings,"Unlock to edit · Drag to reorder · Right-click to toggle · Leftmost first",25,y-22,710)
+    label(settings,Z.class=="PALADIN" and L.BLESSINGS or L.BUFFS,25,y,400,"GameFontNormal")
+    label(settings,L.ROW_HELP,25,y-22,710)
     y=y-48
     section(settings,14,y+7,732,(#Z.active==0 and 30 or #Z.active*77))
     if #Z.active==0 then
-        label(settings,"No supported buffs for this class.",25,y,410)
+        label(settings,L.NO_BUFFS,25,y,410)
         y=y-30
     else
         for i,p in ipairs(Z.active) do
@@ -294,46 +318,49 @@ function Z.CreateUI()
                 Z.db.enabled[entry.key]=value Z.Refresh()
             end)
             rows[i]=row
-            if entry.reagent then tooltip(row,"Requires reagents.") end
+            if entry.reagent then tooltip(row,L.REAGENT_TIP) end
             Z.priorityEditors[p.key]=Z.CreatePriorityRow(settings,p,y)
             y=y-77
         end
     end
     if Z.class=="PALADIN" then
-        label(settings,"One blessing per player, chosen by class.",25,y,410)
+        label(settings,L.ONE_BLESSING,25,y,410)
         y=y-25
     end
     y=y-12
     section(settings,14,y+10,732,73)
     thresholdText=label(settings,"",25,y,710,"GameFontNormal")
-    slider=CreateFrame("Slider","ZEUSRefreshSlider",settings,"OptionsSliderTemplate")
+    -- The current labelled slider; OptionsSliderTemplate is now only a deprecated alias of it.
+    slider=CreateFrame("Slider","ZEUSRefreshSlider",settings,"UISliderTemplateWithLabels")
     slider:SetPoint("TOPLEFT",27,y-30)
     slider:SetSize(704,16)
     slider:SetMinMaxValues(0,99)
     slider:SetValueStep(1)
     slider:SetObeyStepOnDrag(true)
-    _G.ZEUSRefreshSliderLow:SetText("0%")
-    _G.ZEUSRefreshSliderHigh:SetText("99%")
-    _G.ZEUSRefreshSliderText:SetText("")
+    local low,high,caption=slider.Low or _G.ZEUSRefreshSliderLow,slider.High or _G.ZEUSRefreshSliderHigh,
+        slider.Text or _G.ZEUSRefreshSliderText
+    low:SetText("0%")
+    high:SetText("99%")
+    caption:SetText("")
     slider:SetValue(Z.db.refresh)
     slider:SetScript("OnValueChanged",function(_,value)
         local nextValue=math.max(0,math.min(99,math.floor(value+0.5)))
         if nextValue==Z.db.refresh then return end
         Z.db.refresh=nextValue Z.RefreshSettings() Z.Refresh()
     end)
-    tooltip(slider,"Rebuff when this percentage of a buff's duration remains. Higher values refresh sooner; 0% waits for expiration. Known lower ranks can be upgraded sooner. Removed buffs keep their original refresh time.")
+    tooltip(slider,L.SLIDER_TIP)
     y=y-84
     local function updateWarning(value)
-        warning:SetText(value and "" or "Buffing flagged players may flag you for PvP.")
+        warning:SetText(value and "" or L.PVP_WARNING)
     end
     section(settings,14,y+5,732,59)
-    local safety=check(settings,"PvP protection",22,y,function(value)
+    local safety=check(settings,L.PVP_PROTECTION,22,y,function(value)
         Z.db.pvp=value
         updateWarning(value)
         Z.Refresh()
     end)
     safety:SetChecked(Z.db.pvp)
-    tooltip(safety,"Skip PvP-flagged players while you are unflagged, and always skip free-for-all PvP players.")
+    tooltip(safety,L.PVP_TIP)
     warning=label(settings,"",25,y-31,410)
     warning:SetTextColor(1,0.65,0.35)
     updateWarning(Z.db.pvp)
@@ -342,11 +369,11 @@ function Z.CreateUI()
     section(settings,14,-height+80,732,36)
     status=label(settings,"",25,-height+68,710)
     status:SetTextColor(1,0.82,0)
-    enableButton=action(settings,"Enable ZEUS",16,-height+36,360,function() Z.ToggleZEUS() end)
+    enableButton=action(settings,L.TURN_ON,16,-height+36,360,function() Z.ToggleZEUS() end)
     Z.enableButton=enableButton
-    tooltip(enableButton,"Enable or disable ZEUS. Disabling restores your normal key binding.")
-    local report=action(settings,"Buff-hour report",384,-height+36,360,Z.PrintBuffReport)
-    tooltip(report,"Print your total buff-hours provided and today's total.")
+    tooltip(enableButton,L.TOGGLE_TIP)
+    local report=action(settings,L.REPORT_BUTTON,384,-height+36,360,Z.PrintBuffReport)
+    tooltip(report,L.REPORT_TIP)
     -- While choosing a key, a dimmed full-screen layer under the dialog accepts
     -- mouse buttons and the wheel anywhere, so mouse binds need no aiming.
     catcher=CreateFrame("Frame","ZEUSKeyCaptureCatcher",UIParent)
@@ -365,12 +392,12 @@ function Z.CreateUI()
     capture:SetFrameStrata("FULLSCREEN_DIALOG")
     capture:SetFrameLevel(settings:GetFrameLevel()+30)
     catcher:SetFrameLevel(math.max(1,capture:GetFrameLevel()-10))
-    title(capture,"Choose your Buff Key")
+    title(capture,L.CHOOSE_TITLE)
     capture.info=label(capture,"",20,-40,420)
-    capture.confirm=action(capture,"Use this key",20,-131,160,function()
+    capture.confirm=action(capture,L.USE_KEY,20,-131,160,function()
         if pendingKey and Z.SetKey(pendingKey) then Z.CancelCapture() Z.RefreshSettings() end
     end)
-    action(capture,"Cancel",280,-131,160,Z.CancelCapture)
+    action(capture,L.CANCEL,280,-131,160,Z.CancelCapture)
     -- The title bar close button hides only the dialog; take the layer with it.
     local layer=catcher
     capture:SetScript("OnHide",function() pendingKey=nil layer:Hide() end)

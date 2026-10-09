@@ -256,9 +256,9 @@ _G.ZEUSReportingAPI=API
 function Z.PrintBuffReport()
     local report=API.GetDailyTotals()
     local today=math.floor((report.generatedAt or 0)/86400)
-    Z.Print(string.format("Total buff-hours provided: %.2f | Today (UTC): %.2f",
+    Z.Print(string.format(Z.L.REPORT_TOTAL,
         report.totalBuffHours,report.days[today] or 0))
     local unmeasured=0
     for _,n in pairs(report.unmeasuredCasts) do unmeasured=unmeasured+n end
-    if unmeasured>0 then Z.Print(string.format("%d successful casts could not be measured.",unmeasured)) end
+    if unmeasured>0 then Z.Print(string.format(Z.L.REPORT_UNMEASURED,unmeasured)) end
 end

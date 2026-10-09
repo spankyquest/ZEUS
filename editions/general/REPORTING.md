@@ -1,4 +1,4 @@
-# ZEUS 0.4.9: total buff-hours provided
+# ZEUS: total buff-hours provided
 
 Run `/zeus report` to see the lifetime total and today's UTC total. Unmeasured
 successful casts are shown separately and earn no guessed hours.

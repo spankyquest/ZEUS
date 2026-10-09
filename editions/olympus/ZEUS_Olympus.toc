@@ -1,6 +1,11 @@
 ## Interface: 16001
 ## Title: ZEUS Olympus - Zero Effort Utility Spamming
-## Notes: Strengthen your guild. Hand out buffs to nearby Olympus guild members across Azeroth. Press your Buff Key or macro. Works without Olympus installed.
+## Notes: One-button buffing for Olympus guilds. Press your Buff Key or macro and ZEUS buffs the next nearby Olympus guildmate who needs it. Works without Olympus installed.
+## Notes-deDE: Buffen mit einer Taste für Olympus-Gilden. Drück deine Buff-Taste oder dein Makro und ZEUS bufft das nächste Olympus-Gildenmitglied in der Nähe, das einen Buff braucht. Läuft auch ohne Olympus.
+## Notes-esES: Buffs con un solo botón para las hermandades de Olympus. Pulsa tu tecla de buff o tu macro y ZEUS bufea al siguiente miembro de Olympus cercano que lo necesite. Funciona sin Olympus instalado.
+## Notes-esMX: Buffs con un solo botón para las hermandades de Olympus. Pulsa tu tecla de buff o tu macro y ZEUS bufea al siguiente miembro de Olympus cercano que lo necesite. Funciona sin Olympus instalado.
+## Notes-frFR: Des buffs en un seul bouton pour les guildes Olympus. Appuie sur ta touche de buff ou ta macro et ZEUS buffe le prochain membre d'Olympus proche qui en a besoin. Fonctionne sans Olympus.
+## Notes-ptBR: Buffs com um botão só para as guildas do Olympus. Aperte sua tecla de buff ou a macro e o ZEUS buffa o próximo membro do Olympus por perto que precisar. Funciona sem o Olympus instalado.
 ## Author: SpankyQuest
 ## X-License: MIT
 ## Version: @VERSION@-olympus
@@ -8,6 +13,11 @@
 ## IconTexture: Interface\Icons\Spell_Nature_Lightning
 
 Edition.lua
+Locales.lua
+Locales/deDE.lua
+Locales/esES.lua
+Locales/frFR.lua
+Locales/ptBR.lua
 Bootstrap.lua
 
 Libs/LibStub.lua
@@ -21,8 +31,11 @@ Priorities.lua
 OlympusPolicy.lua
 Reporting.lua
 OlympusAPI.lua
+GamepadRegistry.lua
+Gamepad.lua
 Core.lua
 Auras.lua
+Blockers.lua
 Queue.lua
 Buttons.lua
 Nameplates.lua

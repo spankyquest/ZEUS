@@ -1,6 +1,7 @@
 local _, Z = ...
 Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
+local L = Z.L
 local function read(name)
     local get=(C_CVar and C_CVar.GetCVar) or GetCVar
     if type(get)~="function" then return nil end
@@ -25,8 +26,9 @@ end
 function Z.IsEnabled()
     return Z.db and Z.db.zeusEnabled==true
 end
+-- Scanning and arming: enabled, friendly nameplates shown, and not under the gamepad UI.
 function Z.IsOperational()
-    return Z.IsEnabled() and Z.FriendsEnabled()
+    return Z.IsEnabled() and Z.FriendsEnabled() and not Z.GamepadUI()
 end
 local previousPlates,writing
 local function update()
@@ -43,28 +45,29 @@ local function update()
 end
 function Z.SetZEUSEnabled(value,oneShot)
     if InCombatLockdown() then
-        Z.Print("Leave combat before toggling ZEUS.") return false
+        Z.Print(L.NO_COMBAT_TOGGLE) return false
     end
+    if not Z.Allowed("nameplate-setting") then Z.Print(Z.GAMEPAD_PAUSED) return false end
     local name,current=setting()
-    local set=(C_CVar and C_CVar.SetCVar) or SetCVar
+    local set=(C_CVar and C_CVar.SetCVar) or SetCVar -- gp:nameplate-setting
     if previousPlates~=nil and current~=previousPlates then Z.db.nameplatesOwned=false end
     previousPlates=current
     local change=value and not current or (not value and Z.db.nameplatesOwned and current)
     if change then
         if not name or type(set)~="function" then
-            Z.Print("ZEUS requires friendly nameplates. Press Shift+V.") return false
+            Z.Print(L.NEED_PLATES) return false
         end
         writing=true
-        local ok=pcall(set,name,value and "1" or "0")
+        local ok=pcall(set,name,value and "1" or "0") -- gp:nameplate-setting
         writing=false
         if not ok or read(name)~=value then
-            update() Z.Print("ZEUS requires friendly nameplates. Press Shift+V.") return false
+            update() Z.Print(L.NEED_PLATES) return false
         end
         Z.db.nameplatesOwned=value and true or false
     elseif not value then Z.db.nameplatesOwned=false end
     Z.db.zeusEnabled=value
     Z.oneShot=value and oneShot or nil
-    Z.oneShotReady=false
+    Z.db.oneShotRun=Z.oneShot or nil
     update()
     if Z.Refresh then Z.Refresh() end
     return true
@@ -78,7 +81,7 @@ function Z.BeginBuffKey(down)
     if Z.FriendsEnabled() then warnedOnDown=nil return true end
     -- Two hardware edges belong to one press; wheel/release-only inputs still warn.
     if down or not warnedOnDown then
-        Z.Print("ZEUS requires friendly nameplates to function. Press Shift+V to enable them.")
+        Z.Print(L.NEED_PLATES)
     end
     warnedOnDown=down and true or nil
     return false
@@ -88,7 +91,7 @@ function Z.BeginBuffMacro()
     if not Z.IsEnabled() then
         return Z.SetZEUSEnabled(true,true)
     elseif not Z.FriendsEnabled() then
-        Z.Print("ZEUS requires friendly nameplates to function. Press Shift+V to enable them.")
+        Z.Print(L.NEED_PLATES)
         return false
     end
     return true
