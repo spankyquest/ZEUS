@@ -23,7 +23,7 @@ Install just one. If both are turned on, ZEUS Olympus runs and the other sits ou
 
 ## Download
 
-Grab the ZIP for your edition from the **Releases** page (or get it from
+Grab the ZIP for your edition from the [Releases](https://github.com/spankyquest/ZEUS/releases) page (or get it from
 CurseForge) and unzip it into `Interface/AddOns`. The green **Code → Download ZIP**
 button gives you the source code instead, which the game can't load.
 
