@@ -2,14 +2,23 @@ local _, Z = ...
 Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
 function Z.Safe(v) return not (issecretvalue and issecretvalue(v)) end
--- Explicit target/mouseover first; class relevance and then lower level.
--- Players marked out of sight (Queue.lua) come after everyone in sight, even a target: the
--- rest of the queue is finished before they are tried again.
-local SORT_KEYS = {"los","intent","priority","level","state","remaining","order"}
+-- Queue order: your target first, then level and then the class order you set (or, with "Sort
+-- by class" ticked, class order and then level), lowest level first unless "Lower-level players
+-- first" is unticked. Settings start with level first (Core.lua); with no settings yet, class. Players marked out of sight (Queue.lua) come after everyone in sight, even
+-- a target: the rest of the queue is finished before they are tried again.
+local CLASS_FIRST = {"los","intent","priority","level","state","remaining","order"}
+local LEVEL_FIRST = {"los","intent","level","priority","state","remaining","order"}
 function Z.Compare(a, b)
-    for i = 1, #SORT_KEYS do
-        local k = SORT_KEYS[i]
-        if a[k] ~= b[k] then return a[k] < b[k] end
+    local db = Z.db
+    local keys = db and db.sortBy == "level" and LEVEL_FIRST or CLASS_FIRST
+    local highFirst = db and db.levelOrder == "high"
+    for i = 1, #keys do
+        local k = keys[i]
+        local x, y = a[k], b[k]
+        if x ~= y then
+            if k == "level" and highFirst then return x > y end
+            return x < y
+        end
     end
     if a.guid ~= b.guid then return a.guid < b.guid end
     return a.profile.key < b.profile.key

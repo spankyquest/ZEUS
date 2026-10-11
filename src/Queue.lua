@@ -49,12 +49,21 @@ local function basic(unit)
     if not safe(class) or not class  then return end
     if Z.db.pvp and ((UnitIsPVP(unit) and not UnitIsPVP("player"))
         or (UnitIsPVPFreeForAll and UnitIsPVPFreeForAll(unit))) then return end
+    -- "Skip AFK players" (on unless the player turned it off). When the game hides the flag
+    -- (a secret value), ZEUS can't tell, so it doesn't skip.
+    if Z.db.skipAFK ~= false and UnitIsAFK then
+        local ok, afk = pcall(UnitIsAFK, unit)
+        if ok and safe(afk) and afk then return end
+    end
     if S.passSkipped[guid] then return end
     if Z.skips[guid] and Z.skips[guid] > GetTime() then return end
     local los = S.los[guid]
     if los and los.untilT > GetTime() then return end
     local level = UnitLevel(unit)
     if not safe(level) or type(level) ~= "number" or level < 1 then return end
+    -- "Skip level 1 players" (on unless the player turned it off): mostly fresh alts and bank
+    -- characters parked in town.
+    if level == 1 and Z.db.skipLevelOne ~= false then return end
     return guid, class, level
 end
 -- Blessings. A paladin's blessing on a player replaces any other blessing from that paladin,
@@ -163,7 +172,17 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     local priority = Z.ClassPriority(Z.db,p,class)
     if not enabled(p) or not priority then return end
     local id = Z.Rank(p,level)
-    if not id or not Z.InRange(id,unit) or (not waitForCaster and not Z.Usable(id)) then return end
+    if not id or not Z.InRange(id,unit) then return end
+    -- Out of mana, the player still needs the buff: they stay in the queue, marked, and ZEUS
+    -- arms nobody it can't cast on. Any other reason it can't be cast leaves them out.
+    local oom
+    if not waitForCaster then
+        local usable, noMana = Z.Usable(id)
+        if not usable then
+            if not noMana then return end
+            oom = true
+        end
+    end
     local snap = ctx and ctx.auras
     if not snap then
         snap = Z.ReadAuras(unit)
@@ -205,7 +224,7 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     return {unit=unit,guid=guid,class=class,level=level,spellID=id,profile=p,name=name,
         inspect=need=="inspect",state=need=="refresh" and 1 or 0,
         remaining=remaining,priority=priority,intent=intent or 2,order=Z.seen[guid],
-        los=S.los[guid] and 1 or 0}
+        los=S.los[guid] and 1 or 0,oom=oom}
 end
 function Z.Candidate(unit, p, intent, waitForCaster)
     local guid, class, level = basic(unit)
@@ -268,7 +287,7 @@ function Z.StartBatch(first)
     local spells,ctx={},{}
     for _,p in ipairs(Z.active) do
         local c=evaluate(first.unit,guid,class,level,p,first.intent,nil,ctx)
-        if c and not c.inspect then spells[#spells+1]=c end
+        if c and not c.inspect and not c.oom then spells[#spells+1]=c end
     end
     if #spells<2 then return end
     table.sort(spells,Z.Compare)
@@ -296,7 +315,15 @@ local function scan()
         end
     end
     table.sort(queue,Z.Compare)
-    return queue
+    -- The buffs you have the mana for go first, in order (ZEUS arms the first); the ones you
+    -- don't stay behind them, in order.
+    local ready, waiting = {}, {}
+    for _, c in ipairs(queue) do
+        if c.oom then waiting[#waiting+1]=c else ready[#ready+1]=c end
+    end
+    for _, c in ipairs(waiting) do ready[#ready+1]=c end
+    Z.lastScan=ready -- the whole queue, for the queue window (a batch or retry narrows Z.queue)
+    return ready
 end
 function Z.BuildQueue()
     if not Z.IsOperational() then return {} end
@@ -307,7 +334,7 @@ function Z.BuildQueue()
                 for _,unit in ipairs(tokens()) do
                     if UnitGUID(unit)==batch.guid then
                         local c=Z.Candidate(unit,p,batch.intent)
-                        if c then return {c} end
+                        if c and not c.oom then return {c} end
                     end
                 end
                 -- Another player may have buffed them, or eligibility changed.
@@ -338,4 +365,9 @@ function Z.BuildQueue()
         queue=scan()
     end
     return queue
+end
+-- Out of mana for everything in the queue: there is a queue, and ZEUS waits for mana.
+function Z.OutOfMana()
+    local first = Z.queue and Z.queue[1]
+    return first ~= nil and first.oom == true
 end

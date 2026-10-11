@@ -3,6 +3,8 @@ Z = Z.ZEUSModule or Z
 if Z.runtimeInactive then return end
 local L = Z.L
 local settings, minimap, capture, catcher, bindButton, status, thresholdText, warning, enableButton
+local restoreReset
+local advanced, advancedButton, layoutAdvanced
 local rows, pendingKey = {}, nil
 local slider
 Z.priorityEditors={}
@@ -79,6 +81,7 @@ local function tooltip(control,text) -- gp:tooltips
     control:SetScript("OnLeave",function() GameTooltip:Hide() end)
 end
 function Z.UpdateStatus()
+    if Z.UpdateQueueWindow then Z.UpdateQueueWindow() end
     if not status then return end
     if enableButton then enableButton:SetText(Z.IsEnabled() and L.TURN_OFF or L.TURN_ON) end
     local text
@@ -89,6 +92,7 @@ function Z.UpdateStatus()
     elseif Z.current then
         local c=Z.current
         text=string.format(c.inspect and L.STATUS_CHECKING or L.STATUS_NEXT,c.name)
+    elseif Z.OutOfMana and Z.OutOfMana() then text=L.STATUS_OOM
     else text=L.STATUS_READY end
     status:SetText(text)
 end
@@ -110,6 +114,14 @@ function Z.RefreshSettings()
     for _,editor in pairs(Z.priorityEditors) do editor.render() end
     if Z.minimapCheck then Z.minimapCheck:SetChecked(not (type(Z.db.minimap)=="table" and Z.db.minimap.hide)) end
     if Z.giversCheck then Z.giversCheck:SetChecked(Z.db.trackGivers~=false) end
+    if Z.protectCheck then Z.protectCheck:SetChecked(Z.db.protectBuffs==true) end
+    if Z.queueCheck then Z.queueCheck:SetChecked(Z.db.showQueue==true) end
+    if Z.pvpCheck then Z.pvpCheck:SetChecked(Z.db.pvp) end
+    if layoutAdvanced then layoutAdvanced() end
+    if Z.afkCheck then Z.afkCheck:SetChecked(Z.db.skipAFK~=false) end
+    if Z.levelOneCheck then Z.levelOneCheck:SetChecked(Z.db.skipLevelOne~=false) end
+    if Z.classFirstCheck then Z.classFirstCheck:SetChecked(Z.db.sortBy~="level") end
+    if Z.lowFirstCheck then Z.lowFirstCheck:SetChecked(Z.db.levelOrder~="high") end
     Z.UpdateStatus()
 end
 function Z.CancelCapture()
@@ -199,6 +211,35 @@ function Z.SetMinimapShown(shown)
     if not shown and minimap and minimap.hovered then minimap.hovered=nil GameTooltip:Hide() end -- gp:tooltips
     if Z.minimapCheck then Z.minimapCheck:SetChecked(shown and true or false) end
 end
+-- Advanced opens a drawer on the side of the window with room for it, the right first.
+local function placeAdvanced()
+    advanced:ClearAllPoints()
+    local right,screen=settings:GetRight(),UIParent:GetRight()
+    if right and screen and right+advanced:GetWidth()>screen then
+        advanced:SetPoint("TOPRIGHT",settings,"TOPLEFT",-2,0)
+    else
+        advanced:SetPoint("TOPLEFT",settings,"TOPRIGHT",2,0)
+    end
+end
+function Z.ToggleAdvanced()
+    if not advanced then return end
+    if advanced:IsShown() then advanced:Hide() else placeAdvanced() advanced:Show() end
+end
+-- Restore Defaults closes it.
+function Z.CloseAdvanced()
+    if advanced then advanced:Hide() end
+end
+-- Restore Defaults (Core.lua): the window back in the middle of the screen, and the minimap
+-- button shown again in its first spot.
+function Z.ResetWindowAndMinimap()
+    if settings then settings:ClearAllPoints() settings:SetPoint("CENTER") end
+    if type(Z.db.minimap)~="table" then Z.db.minimap={} end
+    for key in pairs(Z.db.minimap) do Z.db.minimap[key]=nil end
+    Z.db.minimap.minimapPos=220
+    local icons=LibStub("LibDBIcon-1.0",true)
+    if icons and icons:IsRegistered("ZEUS") then icons:Refresh("ZEUS",Z.db.minimap) end -- gp:minimap
+    Z.SetMinimapShown(true)
+end
 local function createMinimap() -- gp:minimap
     local ldb=LibStub("LibDataBroker-1.1")
     local icons=LibStub("LibDBIcon-1.0")
@@ -261,13 +302,20 @@ function Z.CreateUI()
         self:StopMovingOrSizing()
         local point,_,relative,x,y=self:GetPoint()
         Z.db.position={point,relative,x,y}
+        if advanced and advanced:IsShown() then placeAdvanced() end
     end)
     if type(Z.db.position)=="table" and #Z.db.position==4 then
         local p=Z.db.position
         settings:ClearAllPoints() settings:SetPoint(p[1],UIParent,p[2],p[3],p[4])
     end
     escapeOn()
-    settings:SetScript("OnHide",Z.CancelCapture)
+    -- Closing the window ends a key capture and locks any class order left open for editing.
+    settings:SetScript("OnHide",function()
+        Z.CancelCapture()
+        if restoreReset then restoreReset() end
+        if advanced then advanced:Hide() end
+        for _,editor in pairs(Z.priorityEditors or {}) do editor.relock() end
+    end)
     title(settings,"ZEUS")
     local portrait=settings.portrait or settings.Portrait
         or (settings.PortraitContainer and settings.PortraitContainer.portrait)
@@ -281,46 +329,77 @@ function Z.CreateUI()
         pcall(portrait.SetMask,portrait,"Interface/CharacterFrame/TempPortraitAlphaMask")
     end
     settings.portrait=portrait
-    label(settings,L.SLOGAN,72,-32,660,"GameFontNormalLarge")
+    -- The slogan shares its line with Restore Defaults and Advanced (top right, in that order);
+    -- one too long for the space
+    -- gets the smaller font. The tagline runs under the buttons.
+    local slogan=label(settings,L.SLOGAN,72,-32,394,"GameFontNormalLarge")
+    local measure=slogan.GetUnboundedStringWidth or slogan.GetStringWidth
+    if measure and (measure(slogan) or 0)>394 then slogan:SetFontObject("GameFontNormal") end
     local tagline=Z.tagline
     if type(tagline)=="table" then tagline=tagline[Z.language.code] or tagline.enUS end
-    label(settings,tagline,72,-54,660)
-    section(settings,14,-73,732,87)
+    label(settings,tagline,72,-57,670)
+    advancedButton=action(settings,L.ADVANCED,630,-30,110,Z.ToggleAdvanced)
+    tooltip(advancedButton,L.ADVANCED_TIP)
+    Z.advancedButton=advancedButton
+    -- Restore Defaults, left of Advanced: a first click asks, a second within five seconds does it.
+    local restore=action(settings,L.RESTORE_DEFAULTS,474,-30,150)
+    local confirmUntil=0
+    restoreReset=function() confirmUntil=0 restore:SetText(L.RESTORE_DEFAULTS) end
+    restore:SetScript("OnClick",function(self)
+        if GetTime()<confirmUntil then
+            restoreReset()
+            Z.RestoreDefaults()
+            return
+        end
+        confirmUntil=GetTime()+5
+        self:SetText(L.RESTORE_CONFIRM)
+        C_Timer.After(5,function() if GetTime()>=confirmUntil then restoreReset() end end)
+    end)
+    tooltip(restore,L.RESTORE_TIP)
+    Z.restoreButton=restore
+    -- Two panes side by side, split by the same 7-pixel gap as the one above Buff Ordering: the
+    -- Buff Key on the left, the macros on the right. Together they are as wide as Buff Ordering.
+    Z.keyPane=section(settings,14,-73,378,62)
+    Z.macrosPane=section(settings,399,-73,347,62)
     label(settings,L.BUFF_KEY,25,-79,400,"GameFontNormal"):SetTextColor(unpack(gold))
     bindButton=action(settings,L.CHOOSE_KEY,25,-98,230,captureKey)
     Z.bindButton=bindButton
+    -- How to choose a key, and the mouse wheel tip, live in the button's tooltip.
+    tooltip(bindButton,L.CHOOSE_KEY_TIP.."\n\n"..L.WHEEL_TIP)
     local resetKey=action(settings,L.RESET,263,-98,118,function()
         if Z.SetKey(nil) then Z.CancelCapture() Z.RefreshSettings() end
     end)
     Z.resetKeyButton=resetKey
     tooltip(resetKey,L.RESET_TIP)
-    label(settings,L.WHEEL_TIP,25,-135,710)
+    Z.macrosHeading=label(settings,L.MACROS,410,-79,320,"GameFontNormal")
+    Z.macrosHeading:SetTextColor(unpack(gold))
     local macro=CreateFrame("Button","ZEUSToggleMacroButton",settings,"SecureHandlerDragTemplate,SecureHandlerStateTemplate")
-    macro:SetPoint("TOPLEFT",580,-92) macro:SetSize(36,36)
+    macro:SetPoint("TOPLEFT",583,-95) macro:SetSize(36,36)
     macro:SetNormalTexture("Interface/Icons/Spell_Nature_Lightning")
     macro:SetHighlightTexture("Interface/Buttons/ButtonHilight-Square")
     macro:EnableMouse(true)
     macro:RegisterForClicks("LeftButtonUp") macro:RegisterForDrag("LeftButton")
-    label(settings,L.TOGGLE_MACRO,624,-93,108,"GameFontNormal")
-    label(settings,L.DRAG_TO_BAR,624,-111,108)
+    label(settings,L.TOGGLE_MACRO,627,-96,108,"GameFontNormal")
+    label(settings,L.DRAG_TO_BAR,627,-114,108)
     tooltip(macro,L.TOGGLE_MACRO_TIP)
     Z.ConfigureToggleMacroButton(macro)
     local buffMacro=CreateFrame("Button","ZEUSBuffMacroButton",settings,"SecureHandlerDragTemplate,SecureHandlerStateTemplate")
-    buffMacro:SetPoint("TOPLEFT",390,-92) buffMacro:SetSize(36,36)
+    buffMacro:SetPoint("TOPLEFT",410,-95) buffMacro:SetSize(36,36)
     buffMacro:SetNormalTexture(136015) -- Chain Lightning
     buffMacro:SetHighlightTexture("Interface/Buttons/ButtonHilight-Square")
     buffMacro:EnableMouse(true)
     buffMacro:RegisterForClicks("LeftButtonUp") buffMacro:RegisterForDrag("LeftButton")
-    label(settings,L.BUFF_MACRO,434,-93,108,"GameFontNormal")
-    label(settings,L.DRAG_TO_BAR,434,-111,108)
+    label(settings,L.BUFF_MACRO,454,-96,104,"GameFontNormal")
+    label(settings,L.DRAG_TO_BAR,454,-114,104)
     tooltip(buffMacro,L.BUFF_MACRO_TIP)
     Z.ConfigureToggleMacroButton(buffMacro,"buff")
-    local y=-175
-    section(settings,14,-167,732,44)
-    label(settings,Z.class=="PALADIN" and L.BLESSINGS or L.BUFFS,25,y,400,"GameFontNormal")
-    label(settings,L.ROW_HELP,25,y-22,710)
-    y=y-48
-    section(settings,14,y+7,732,(#Z.active==0 and 30 or #Z.active*77))
+    -- Buff Ordering: one box with the title and a row per buff (its tick box and class tiles; how
+    -- to edit them is in the Edit Order button's tooltip). Its height is set once the rows are in.
+    -- The queue's sort boxes are under Advanced.
+    local y=-150
+    local ordering=section(settings,14,-142,732,40)
+    label(settings,Z.class=="PALADIN" and L.BLESSING_ORDERING or L.BUFF_ORDERING,25,y,230,"GameFontNormal")
+    y=y-28
     if #Z.active==0 then
         label(settings,L.NO_BUFFS,25,y,410)
         y=y-30
@@ -341,6 +420,7 @@ function Z.CreateUI()
         label(settings,L.ONE_BLESSING,25,y,710)
         y=y-25
     end
+    ordering:SetHeight(-149-y)
     y=y-12
     section(settings,14,y+10,732,73)
     thresholdText=label(settings,"",25,y,710,"GameFontNormal")
@@ -363,41 +443,92 @@ function Z.CreateUI()
         Z.db.refresh=nextValue Z.RefreshSettings() Z.Refresh()
     end)
     tooltip(slider,L.SLIDER_TIP)
-    y=y-84
-    local function updateWarning(value)
-        warning:SetText(value and "" or L.PVP_WARNING)
-    end
-    section(settings,14,y+5,732,59)
-    local safety=check(settings,L.PVP_PROTECTION,22,y,function(value)
-        Z.db.pvp=value
-        updateWarning(value)
-        Z.Refresh()
-    end)
-    safety:SetChecked(Z.db.pvp)
-    tooltip(safety,L.PVP_TIP)
-    warning=label(settings,"",25,y-31,355)
-    warning:SetTextColor(1,0.65,0.35)
-    updateWarning(Z.db.pvp)
-    local minimapCheck=check(settings,L.MINIMAP_BUTTON,388,y,function(value) Z.SetMinimapShown(value) end)
-    minimapCheck.caption:SetWidth(320)
-    minimapCheck:SetChecked(not (type(Z.db.minimap)=="table" and Z.db.minimap.hide))
-    tooltip(minimapCheck,L.MINIMAP_BUTTON_TIP)
-    Z.minimapCheck=minimapCheck
-    local giversCheck=check(settings,L.TRACK_GIVERS,388,y-28,function(value) Z.SetTrackGivers(value) end)
-    giversCheck.caption:SetWidth(320)
-    giversCheck:SetChecked(Z.db.trackGivers~=false)
-    tooltip(giversCheck,L.TRACK_GIVERS_TIP)
-    Z.giversCheck=giversCheck
-    local height=-y+144
+    -- Every other box (PvP protection too) is under Advanced.
+    local height=-y+153
     settings:SetHeight(height)
     section(settings,14,-height+80,732,36)
     status=label(settings,"",25,-height+68,710)
+    Z.statusLine=status
     status:SetTextColor(1,0.82,0)
     enableButton=action(settings,L.TURN_ON,16,-height+36,360,function() Z.ToggleZEUS() end)
     Z.enableButton=enableButton
     tooltip(enableButton,L.TOGGLE_TIP)
     local report=action(settings,L.REPORT_BUTTON,384,-height+36,360,Z.PrintBuffReport)
     tooltip(report,L.REPORT_TIP)
+    -- Advanced: every box but the buffs, in a drawer beside the window. It closes with the
+    -- window, and the Advanced button stays lit while it's open. While PvP protection is off its
+    -- warning shows under its box, and the boxes below move down to make room.
+    advanced=panel("ZEUSAdvanced",280,342,settings)
+    advanced:SetFrameStrata("DIALOG")
+    advanced:SetFrameLevel(settings:GetFrameLevel()+20)
+    advanced:SetClampedToScreen(true)
+    title(advanced,L.ADVANCED)
+    advanced:SetScript("OnShow",function() advancedButton:LockHighlight() end)
+    advanced:SetScript("OnHide",function() advancedButton:UnlockHighlight() end)
+    local function box(text,tip,fn)
+        local b=check(advanced,text,14,0,fn)
+        b.caption:SetWidth(215)
+        tooltip(b,tip)
+        return b
+    end
+    label(advanced,L.ADVANCED_QUEUE,18,-34,240,"GameFontNormal"):SetTextColor(unpack(gold))
+    -- Sort by class starts unticked (level first); Lower-level players first starts ticked.
+    Z.classFirstCheck=box(L.SORT_BY_CLASS,L.SORT_BY_CLASS_TIP,function(value)
+        Z.db.sortBy=value and "class" or "level"
+        Z.Refresh()
+    end)
+    Z.lowFirstCheck=box(L.LOW_LEVEL_FIRST,L.LOW_LEVEL_FIRST_TIP,function(value)
+        Z.db.levelOrder=value and "low" or "high"
+        Z.Refresh()
+    end)
+    Z.afkCheck=box(L.SKIP_AFK,L.SKIP_AFK_TIP,function(value)
+        Z.db.skipAFK=value
+        Z.Refresh()
+    end)
+    Z.levelOneCheck=box(L.SKIP_LEVEL_ONE,L.SKIP_LEVEL_ONE_TIP,function(value)
+        Z.db.skipLevelOne=value
+        Z.Refresh()
+    end)
+    Z.pvpCheck=box(L.PVP_PROTECTION,L.PVP_TIP,function(value)
+        Z.db.pvp=value
+        layoutAdvanced()
+        Z.Refresh()
+    end)
+    warning=label(advanced,"",18,0,244)
+    warning:SetTextColor(1,0.65,0.35)
+    Z.pvpWarning=warning
+    local interfaceTitle=label(advanced,L.ADVANCED_INTERFACE,18,0,240,"GameFontNormal")
+    interfaceTitle:SetTextColor(unpack(gold))
+    Z.interfaceTitle=interfaceTitle
+    Z.minimapCheck=box(L.MINIMAP_BUTTON,L.MINIMAP_BUTTON_TIP,function(value) Z.SetMinimapShown(value) end)
+    Z.giversCheck=box(L.TRACK_GIVERS,L.TRACK_GIVERS_TIP,function(value) Z.SetTrackGivers(value) end)
+    Z.protectCheck=box(L.PROTECT_BUFFS,L.PROTECT_BUFFS_TIP,function(value) Z.SetProtectBuffs(value) end)
+    Z.queueCheck=box(L.SHOW_QUEUE,L.SHOW_QUEUE_TIP,function(value) Z.SetQueueWindowShown(value) end)
+    local upper={Z.classFirstCheck,Z.lowFirstCheck,Z.afkCheck,Z.levelOneCheck,Z.pvpCheck}
+    local lower={Z.minimapCheck,Z.giversCheck,Z.protectCheck,Z.queueCheck}
+    local function place(b,y)
+        b:ClearAllPoints() b:SetPoint("TOPLEFT",14,y)
+        b.caption:ClearAllPoints() b.caption:SetPoint("TOPLEFT",45,y-6)
+    end
+    layoutAdvanced=function()
+        local y=-52
+        for _,b in ipairs(upper) do place(b,y) y=y-28 end
+        local text=Z.db.pvp and "" or L.PVP_WARNING
+        warning:SetText(text)
+        warning:ClearAllPoints() warning:SetPoint("TOPLEFT",18,y-2)
+        if text~="" then
+            local h=warning.GetStringHeight and warning:GetStringHeight()
+            if type(h)~="number" or h<12 then h=26 end
+            y=y-h-6
+        end
+        y=y-8
+        interfaceTitle:ClearAllPoints() interfaceTitle:SetPoint("TOPLEFT",18,y)
+        y=y-18
+        for _,b in ipairs(lower) do place(b,y) y=y-28 end
+        advanced:SetHeight(-y+10)
+    end
+    layoutAdvanced()
+    advanced:Hide()
     -- While choosing a key, a dimmed full-screen layer under the dialog accepts
     -- mouse buttons and the wheel anywhere, so mouse binds need no aiming.
     catcher=CreateFrame("Frame","ZEUSKeyCaptureCatcher",UIParent)

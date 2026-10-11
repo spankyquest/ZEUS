@@ -26,8 +26,10 @@
     <Script file="../Buttons.lua"/>
     <Script file="../Nameplates.lua"/>
     <Script file="../Givers.lua"/>
+    <Script file="../Protect.lua"/>
     <Script file="../Macro.lua"/>
     <Script file="../PriorityUI.lua"/>
     <Script file="../UI.lua"/>
+    <Script file="../QueueWindow.lua"/>
     <Script file="OlympusAdapter.lua"/>
 </Ui>

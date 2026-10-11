@@ -39,7 +39,7 @@ function Z.SyncNameplateState()
     if not enabled then
         S.acquisition,S.retry,S.batch=nil,nil,nil
         S.passSkipped={}
-        Z.queue={}
+        Z.queue={} Z.lastScan=nil
         if not InCombatLockdown() then Z.Arm(nil) else Z.current=nil end
     end
     if Z.UpdateStatus then Z.UpdateStatus() end
@@ -70,7 +70,9 @@ function Z.Refresh(fromInput)
             Z.autoTarget=guid
             local c=Z.AcquiredCandidate("target",acquisition.profile,2,S.retry and S.retry.guid==guid)
             S.acquisition=nil
-            if c and not c.inspect then Z.Arm(c) if Z.UpdateStatus then Z.UpdateStatus() end return end
+            if c and not c.inspect and not c.oom then Z.Arm(c) if Z.UpdateStatus then Z.UpdateStatus() end return end
+            -- They need it, but you're out of mana: no hold on them; the queue waits.
+            if c and c.oom then Z.Arm(nil) if Z.UpdateStatus then Z.UpdateStatus() end return end
             -- The target resolved but cannot be safely buffed. Do not reacquire
             -- the same nameplate repeatedly while its data stays unavailable, and
             -- remember a buff or blocker they carry for when they are a nameplate again.
@@ -90,7 +92,8 @@ function Z.Refresh(fromInput)
         Z.queue=Z.BuildQueue()
         nextInputScan=GetTime()+0.1
         inputTarget=targetGUID
-        Z.Arm(Z.queue[1])
+        local first=Z.queue[1]
+        Z.Arm(first and not first.oom and first or nil)
     end
     if Z.UpdateStatus then Z.UpdateStatus() end
 end
@@ -202,6 +205,48 @@ local function copy(value)
     if type(value)~="table" then return value end
     local out={} for k,v in pairs(value) do out[k]=copy(v) end return out
 end
+-- The player's settings, filled in with their defaults where unset or damaged.
+local function settingDefaults()
+    Z.db.enabled=type(Z.db.enabled)=="table" and Z.db.enabled or {}
+    Z.NormalizePriorities(Z.db)
+    Z.db.refresh=math.max(0,math.min(99,math.floor((tonumber(Z.db.refresh) or 25)+0.5)))
+    if Z.db.pvp==nil then Z.db.pvp=true end
+    if type(Z.db.skipAFK)~="boolean" then Z.db.skipAFK=true end
+    if type(Z.db.skipLevelOne)~="boolean" then Z.db.skipLevelOne=true end
+    if Z.db.sortBy~="class" then Z.db.sortBy="level" end -- level first unless Sort by class is ticked
+    if Z.db.levelOrder~="high" then Z.db.levelOrder="low" end
+    if Z.db.dualEdge==nil then Z.db.dualEdge=true end
+    if type(Z.db.trackGivers)~="boolean" then Z.db.trackGivers=true end
+    if type(Z.db.protectBuffs)~="boolean" then Z.db.protectBuffs=false end
+    if type(Z.db.showQueue)~="boolean" then Z.db.showQueue=false end
+    -- Every buff starts ticked; a buff the player unticked stays unticked.
+    for _,p in ipairs(Z.profiles) do
+        if Z.db.enabled[p.key]==nil then Z.db.enabled[p.key]=true end
+    end
+end
+-- Restore Defaults (the settings window): every setting back to a fresh install's, and every
+-- class order locked again. Kept: your
+-- buff-hours, whether ZEUS is enabled, and what ZEUS has learned while buffing (who it buffed
+-- recently, and the buffs that block yours; /zeus blockers clear forgets those).
+local SETTINGS={"key","enabled","priorities","priorityVersion","refresh","pvp","skipAFK",
+    "skipLevelOne","sortBy","levelOrder","dualEdge","trackGivers","protectBuffs","showQueue","queueWindow","position"}
+function Z.RestoreDefaults()
+    if InCombatLockdown() then Z.Print(L.NO_COMBAT_RESET) return false end
+    for _,key in ipairs(SETTINGS) do Z.db[key]=nil end
+    settingDefaults()
+    Z.SetTrackGivers(true)
+    if Z.ApplyBuffProtection then Z.ApplyBuffProtection() end
+    if Z.ApplyQueueWindow then Z.ApplyQueueWindow() end
+    Z.ApplyBinding()
+    if Z.ResetWindowAndMinimap then Z.ResetWindowAndMinimap() end
+    if Z.CloseAdvanced then Z.CloseAdvanced() end
+    -- A class order left open with Edit Order is locked again.
+    for _,editor in pairs(Z.priorityEditors or {}) do editor.relock() end
+    if Z.RefreshSettings then Z.RefreshSettings() end
+    Z.Refresh()
+    Z.Print(L.DEFAULTS_RESTORED)
+    return true
+end
 local function initialize()
     local saved=Z.savedVariables
     if type(_G[saved])~="table" then
@@ -212,20 +257,12 @@ local function initialize()
     end
     Z.db=_G[saved]
     Z.InitializeReporting()
-    Z.db.enabled=type(Z.db.enabled)=="table" and Z.db.enabled or {}
     Z.db.memory=type(Z.db.memory)=="table" and Z.db.memory or {}
     Z.NormalizeBlockers(Z.db)
-    Z.NormalizePriorities(Z.db)
     if type(Z.db.zeusEnabled)~="boolean" then Z.db.zeusEnabled=false end
     -- A temporary run interrupted by a /reload carries on, so it still ends by itself (at once).
     Z.oneShot=Z.db.oneShotRun==true and Z.db.zeusEnabled or nil
-    Z.db.refresh=math.max(0,math.min(99,math.floor((tonumber(Z.db.refresh) or 20)+0.5)))
-    if Z.db.pvp==nil then Z.db.pvp=true end
-    if Z.db.dualEdge==nil then Z.db.dualEdge=true end
-    if type(Z.db.trackGivers)~="boolean" then Z.db.trackGivers=true end
-    for _,p in ipairs(Z.profiles) do
-        if Z.db.enabled[p.key]==nil then Z.db.enabled[p.key]=not p.defaultOff end
-    end
+    settingDefaults()
     Z.class=select(2,UnitClass("player"))
     Z.RefreshSpells()
     local durations={}
@@ -235,6 +272,9 @@ local function initialize()
     installSlash()
     started=true
     Z.CreateUI()
+    if Z.ApplyBuffProtection then Z.ApplyBuffProtection() end
+    if Z.LoadGivers then Z.LoadGivers() end
+    if Z.ApplyQueueWindow then Z.ApplyQueueWindow() end
     Z.ApplyBinding()
     Z.Refresh()
     -- A one-time pointer for a new character; ZEUS stays quiet after that.

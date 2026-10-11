@@ -21,8 +21,8 @@ function Z.CreatePriorityRow(parent,p,y)
     strip:SetPoint("TOPLEFT",25,y-32)
     strip:SetSize(9*(tileWidth+gap)-gap,28)
     editor.strip=strip
-    editor.lock=button(parent,L.UNLOCK,621,y,110)
-    editor.reset=button(parent,L.RESET,505,y,110)
+    editor.lock=button(parent,L.UNLOCK,591,y,140)
+    editor.reset=button(parent,L.RESET,475,y,110)
     local function render()
         local custom=Z.PriorityLayout(Z.db,p)
         editor.lock:SetText(editor.unlocked and L.LOCK or L.UNLOCK)
@@ -53,8 +53,20 @@ function Z.CreatePriorityRow(parent,p,y)
         tile.text=tile:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
         tile.text:SetPoint("CENTER") tile.text:SetWidth(tileWidth-6)
         tile:RegisterForClicks("RightButtonUp") tile:RegisterForDrag("LeftButton")
-        tile:SetScript("OnClick",function()
-            if editor.unlocked then Z.ToggleClass(Z.db,p,token) changed() end
+        -- The tooltip: the class and whether this buff goes to it, then how to change that.
+        local function tip(self) -- gp:tooltips
+            local enabled=Z.PriorityLayout(Z.db,p).enabled[token]
+            GameTooltip:SetOwner(self,"ANCHOR_TOP")
+            GameTooltip:AddLine(string.format(enabled and L.TILE_ON or L.TILE_OFF,className(token)),1,0.82,0.4)
+            GameTooltip:AddLine(editor.unlocked and L.TILE_HELP_UNLOCKED or L.TILE_HELP_LOCKED,0.9,0.9,0.9)
+            GameTooltip:Show()
+        end
+        -- A right-click while editing skips the class or takes it back, and the tooltip over it
+        -- says so at once.
+        tile:SetScript("OnClick",function(self)
+            if not editor.unlocked then return end
+            Z.ToggleClass(Z.db,p,token) changed()
+            if self and GameTooltip:IsOwned(self) then tip(self) end -- gp:tooltips
         end)
         tile:SetScript("OnDragStart",function(self)
             if not editor.unlocked then return end
@@ -70,17 +82,21 @@ function Z.CreatePriorityRow(parent,p,y)
             self:SetFrameLevel(strip:GetFrameLevel()+1)
             changed()
         end)
-        tile:SetScript("OnEnter",function(self) -- gp:tooltips
-            local enabled=Z.PriorityLayout(Z.db,p).enabled[token]
-            GameTooltip:SetOwner(self,"ANCHOR_TOP")
-            GameTooltip:AddLine(string.format(enabled and L.TILE_ON or L.TILE_OFF,className(token)),1,0.82,0.4)
-            GameTooltip:AddLine(editor.unlocked and L.TILE_HELP_UNLOCKED or L.TILE_HELP_LOCKED,0.9,0.9,0.9)
-            GameTooltip:Show()
-        end)
+        tile:SetScript("OnEnter",tip)
         tile:SetScript("OnLeave",function() GameTooltip:Hide() end) -- gp:tooltips
         editor.tiles[token]=tile
     end
     editor.lock:SetScript("OnClick",function() editor.unlocked=not editor.unlocked render() end)
+    editor.lock:SetScript("OnEnter",function(self) -- gp:tooltips
+        GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
+        GameTooltip:AddLine(editor.unlocked and L.LOCK_TIP or L.UNLOCK_TIP,0.9,0.9,0.9,true)
+        GameTooltip:Show()
+    end)
+    editor.lock:SetScript("OnLeave",function() GameTooltip:Hide() end) -- gp:tooltips
+    -- Closing the settings window locks the order again (UI.lua).
+    editor.relock=function()
+        if editor.unlocked then editor.unlocked=false render() end
+    end
     editor.reset:SetScript("OnClick",function()
         if editor.unlocked then Z.ResetPriority(Z.db,p) changed() end
     end)

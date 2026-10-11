@@ -54,7 +54,7 @@ profile("waterbreathing", "SHAMAN", "Water Breathing", 600, {{131,1}},
     {cover={5697}, reagent=17057})
 profile("waterwalking", "SHAMAN", "Water Walking", 600, {{546,1}},
     {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN WARLOCK","DRUID"},
-    {defaultOff=true, reagent=17058, breaksOnDamage=true}) -- Any damage cancels it.
+    {reagent=17058, breaksOnDamage=true}) -- Any damage cancels it.
 -- Each paladin gives a player one blessing (their next one replaces it), while blessings from
 -- different paladins stack. These are the choices for each class, best first; Queue.lua skips
 -- one another paladin already gave. ZEUS can't tell a hybrid's spec, so hybrids start at Kings.
@@ -73,8 +73,7 @@ profile("spirit", "PRIEST", "Divine Spirit", 3600,
 profile("shadow", "PRIEST", "Shadow Protection", 600,
     {{10958,46},{10957,32},{976,1}},
     {"WARRIOR PALADIN DRUID SHAMAN ROGUE HUNTER WARLOCK MAGE"},
-    {cover={27683}, defaultOff=true})
+    {cover={27683}})
 profile("thorns", "DRUID", "Thorns", 600,
     {{9910,50},{9756,40},{8914,30},{1075,20},{782,10},{467,1}},
-    {"WARRIOR","PALADIN SHAMAN","ROGUE","HUNTER","WARLOCK PRIEST MAGE"},
-    {defaultOff=true})
+    {"WARRIOR","PALADIN SHAMAN","ROGUE","HUNTER","WARLOCK PRIEST MAGE"})

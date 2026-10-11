@@ -63,12 +63,15 @@ function Z.InRange(id, unit)
     elseif IsSpellInRange then value = IsSpellInRange(Z.SpellName(id),unit) end
     return safe(value) and (value == true or value == 1)
 end
+-- Whether you can cast a spell now; when you can't, the second value says it's only for mana.
 function Z.Usable(id)
-    local ok
-    if C_Spell and C_Spell.IsSpellUsable then ok = C_Spell.IsSpellUsable(id)
-    elseif IsUsableSpell then ok = IsUsableSpell(id)
+    local ok, noMana
+    if C_Spell and C_Spell.IsSpellUsable then ok, noMana = C_Spell.IsSpellUsable(id)
+    elseif IsUsableSpell then ok, noMana = IsUsableSpell(id)
     else return true end
-    return safe(ok) and ok == true
+    if not safe(ok) then return false, false end
+    if ok == true then return true end
+    return false, safe(noMana) and noMana == true or false
 end
 
 -- Read every helpful aura on a unit once. `hidden` marks secret or failed
