@@ -55,6 +55,16 @@ function Z.NormalizePriorities(db)
             end
         end
     end
+    -- Before 0.5.2 paladins got no blessing, so a blessing row saved back then has them
+    -- switched off without the player ever choosing that. Switch them on once; skipping them
+    -- again later is kept like any other choice.
+    if (tonumber(db.priorityVersion) or 1) < 2 then
+        for _,p in ipairs(Z.profiles) do
+            local custom=db.priorities[p.key]
+            if p.blessing and custom and p.priority.PALADIN then custom.enabled.PALADIN=true end
+        end
+    end
+    db.priorityVersion=2
 end
 function Z.MoveClass(db,p,class,index)
     local custom=Z.PriorityLayout(db,p)

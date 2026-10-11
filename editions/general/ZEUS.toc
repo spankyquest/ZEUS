@@ -38,6 +38,7 @@ Blockers.lua
 Queue.lua
 Buttons.lua
 Nameplates.lua
+Givers.lua
 Macro.lua
 PriorityUI.lua
 UI.lua

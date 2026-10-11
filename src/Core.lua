@@ -68,7 +68,7 @@ function Z.Refresh(fromInput)
         local guid=UnitGUID("target")
         if safe(guid) and guid==acquisition.guid then
             Z.autoTarget=guid
-            local c=Z.Candidate("target",acquisition.profile,2,S.retry and S.retry.guid==guid)
+            local c=Z.AcquiredCandidate("target",acquisition.profile,2,S.retry and S.retry.guid==guid)
             S.acquisition=nil
             if c and not c.inspect then Z.Arm(c) if Z.UpdateStatus then Z.UpdateStatus() end return end
             -- The target resolved but cannot be safely buffed. Do not reacquire
@@ -172,11 +172,13 @@ local function slash(msg)
     if msg=="report" then Z.PrintBuffReport() return end
     if msg=="blockers" then Z.PrintBlockers() return end
     if msg=="blockers clear" then Z.ClearBlockers() return end
+    if msg=="auras" then Z.PrintAuras() return end
     if msg=="debug" or msg=="status" then
         Z.Print(string.format("v%s | %s | %s | key %s | edges down/up %d/%d | attempts %d | successes %d",
             Z.version,Z.class,Z.db.dualEdge and "both edges" or "release only",Z.db.key or "unbound",
             Z.diag.down,Z.diag.up,Z.diag.attempts,Z.diag.successes))
         Z.Print(Z.diag.last)
+        if Z.GiverDebug then Z.Print(Z.GiverDebug()) end
         local language=Z.language
         Z.Print(string.format("language: %s, %d lines translated, %s left out",language.code,language.taken,
             #language.skipped>0 and table.concat(language.skipped,", ") or "none"))
@@ -220,6 +222,7 @@ local function initialize()
     Z.db.refresh=math.max(0,math.min(99,math.floor((tonumber(Z.db.refresh) or 20)+0.5)))
     if Z.db.pvp==nil then Z.db.pvp=true end
     if Z.db.dualEdge==nil then Z.db.dualEdge=true end
+    if type(Z.db.trackGivers)~="boolean" then Z.db.trackGivers=true end
     for _,p in ipairs(Z.profiles) do
         if Z.db.enabled[p.key]==nil then Z.db.enabled[p.key]=not p.defaultOff end
     end
@@ -269,6 +272,8 @@ Z.frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="PLAYER_REGEN_ENABLED" then
         Z.ApplyBinding()
     elseif event=="SPELLS_CHANGED" or event=="PLAYER_ENTERING_WORLD" then
+        -- (isInitialLogin, isReloadingUi): a fresh login starts ZEUS off; a /reload keeps it.
+        if event=="PLAYER_ENTERING_WORLD" and safe(a) and a==true then Z.StartLoggedIn() end
         Z.RefreshSpells()
         if Z.RefreshSettings then Z.RefreshSettings() end
     elseif event=="NAME_PLATE_UNIT_ADDED" then
@@ -279,6 +284,7 @@ Z.frame:SetScript("OnEvent",function(_,event,...)
         if not S.acquisition then Z.autoTarget=nil end
     elseif event=="UNIT_AURA" then
         Z.ObserveBuffReports(a)
+        Z.NoteGivers(a,b)
     elseif event=="UNIT_SPELLCAST_SENT" then
         if a~="player" then return end
         -- The first matching send belongs to ZEUS's prepared cast; any other

@@ -30,13 +30,36 @@ end
 function Z.IsOperational()
     return Z.IsEnabled() and Z.FriendsEnabled() and not Z.GamepadUI()
 end
+-- The key bound to the game's "Show Friendly Name Plates" action, as the game writes it
+-- (Shift-V unless the player changed it), or nil when nothing is bound to it.
+function Z.PlatesKey()
+    if type(GetBindingKey)~="function" then return nil end
+    local ok,key=pcall(GetBindingKey,"FRIENDNAMEPLATES")
+    if not ok or not Z.Safe(key) or type(key)~="string" or key=="" then return nil end
+    if type(GetBindingText)=="function" then
+        local shown,text=pcall(GetBindingText,key)
+        if shown and Z.Safe(text) and type(text)=="string" and text~="" then return text end
+    end
+    return key
+end
+-- "ZEUS needs friendly nameplates", with the player's own key for them. `status` gives the
+-- short form for the settings window's status line.
+function Z.NeedPlatesText(status)
+    local key=Z.PlatesKey()
+    if key then return string.format(status and L.STATUS_NEEDS_PLATES or L.NEED_PLATES,key) end
+    if status then return L.STATUS_NEEDS_PLATES_NO_KEY end
+    local action=type(BINDING_NAME_FRIENDNAMEPLATES)=="string" and BINDING_NAME_FRIENDNAMEPLATES
+        or "Show Friendly Name Plates"
+    local menu=type(KEY_BINDINGS)=="string" and KEY_BINDINGS or "Key Bindings"
+    return string.format(L.NEED_PLATES_NO_KEY,action,menu)
+end
 local previousPlates,writing
 local function update()
     if Z.runtimeInactive then return end
     local visible=Z.FriendsEnabled()
     if Z.db and not writing and (not visible or (previousPlates~=nil and visible~=previousPlates)) then
-        -- Any external visibility change ends our ownership. A later Shift+V
-        -- enable belongs to the player, not this addon.
+        -- Any external visibility change ends our ownership. A later enable with the
+        -- game's key belongs to the player, not this addon.
         Z.db.nameplatesOwned=false
     end
     previousPlates=visible
@@ -55,13 +78,13 @@ function Z.SetZEUSEnabled(value,oneShot)
     local change=value and not current or (not value and Z.db.nameplatesOwned and current)
     if change then
         if not name or type(set)~="function" then
-            Z.Print(L.NEED_PLATES) return false
+            Z.Print(Z.NeedPlatesText()) return false
         end
         writing=true
         local ok=pcall(set,name,value and "1" or "0") -- gp:nameplate-setting
         writing=false
         if not ok or read(name)~=value then
-            update() Z.Print(L.NEED_PLATES) return false
+            update() Z.Print(Z.NeedPlatesText()) return false
         end
         Z.db.nameplatesOwned=value and true or false
     elseif not value then Z.db.nameplatesOwned=false end
@@ -72,6 +95,23 @@ function Z.SetZEUSEnabled(value,oneShot)
     if Z.Refresh then Z.Refresh() end
     return true
 end
+-- Logging in (not a /reload): ZEUS starts off. Friendly nameplates it turned on last time go
+-- back off; nameplates the player turned on, with their key or the options, stay on. With
+-- the gamepad UI on, ZEUS may not change the game's settings: it only starts off, and its
+-- nameplates go back off at the next mouse-and-keyboard login.
+function Z.StartLoggedIn()
+    if not Z.db then return end
+    if not Z.Allowed("nameplate-setting") then
+        Z.db.zeusEnabled=false
+        Z.db.oneShotRun=nil
+        Z.oneShot=nil
+        if Z.SyncNameplateState then Z.SyncNameplateState() end
+        return
+    end
+    Z.OutOfCombat(function()
+        if Z.IsEnabled() or Z.db.nameplatesOwned then Z.SetZEUSEnabled(false,false) end
+    end)
+end
 function Z.ToggleZEUS()
     return Z.SetZEUSEnabled(not Z.IsEnabled(),false)
 end
@@ -81,7 +121,7 @@ function Z.BeginBuffKey(down)
     if Z.FriendsEnabled() then warnedOnDown=nil return true end
     -- Two hardware edges belong to one press; wheel/release-only inputs still warn.
     if down or not warnedOnDown then
-        Z.Print(L.NEED_PLATES)
+        Z.Print(Z.NeedPlatesText())
     end
     warnedOnDown=down and true or nil
     return false
@@ -91,7 +131,7 @@ function Z.BeginBuffMacro()
     if not Z.IsEnabled() then
         return Z.SetZEUSEnabled(true,true)
     elseif not Z.FriendsEnabled() then
-        Z.Print(L.NEED_PLATES)
+        Z.Print(Z.NeedPlatesText())
         return false
     end
     return true

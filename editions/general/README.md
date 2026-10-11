@@ -1,6 +1,6 @@
 # ZEUS — Zero Effort Utility Spamming
 
-**By SpankyQuest · 0.5.1 · World of Warcraft: Forever**
+**By SpankyQuest · 0.5.2 · World of Warcraft: Forever**
 
 **Power your allies. Crush your enemies.**
 
@@ -29,10 +29,15 @@ picking the right rank, and remembering who already has it.
   buff got in the way and leaves that player alone until it's gone.
 - **Stays out of PvP trouble.** Skips PvP-flagged players while you're not flagged.
 - **Buff-hours.** `/zeus report` adds up how much buff time you've handed out.
+- **See who buffed you.** Hover one of your own buffs to see who gave it.
+  Left-click it to whisper them a thank-you.
 - **Your language.** English, Deutsch, Español, Français and Português (Brasil).
 
 Paladins hand out one blessing per player, picked by class: Might for warriors and
-rogues, Wisdom for casters, Kings for hunters, druids and shamans.
+rogues, Wisdom for casters, Kings for hunters, druids, shamans and other paladins.
+Blessings from different paladins stack, so if someone already gave that one, ZEUS
+gives the next one instead. A blessing you gave yourself, by hand or with ZEUS,
+stays put and gets refreshed.
 
 Only want to buff your Olympus guildmates? Get **ZEUS Olympus** instead.
 
@@ -43,8 +48,8 @@ Only want to buff your Olympus guildmates? Get **ZEUS Olympus** instead.
 2. In game, type `/zeus`.
 3. Click **Choose a key...** and press the key you want, or click a mouse button or
    scroll the wheel. (Or drag the **Buff** icon onto your action bar.)
-4. Click **Turn ZEUS on**. It switches on friendly nameplates (Shift+V), because
-   that's how it sees the players around you.
+4. Click **Turn ZEUS on**. It switches on friendly nameplates (the game's Shift+V,
+   unless you've changed that key), because that's how it sees the players around you.
 5. Head somewhere busy and press your key.
 
 **Tip:** bind the mouse wheel and you can buff a whole town just by scrolling.
@@ -61,8 +66,9 @@ stop. Your Buff Key keeps its normal job the whole time.
 | --- | --- |
 | `/zeus` | Settings (or left-click the minimap button) |
 | `/zeus toggle` | Turn ZEUS on or off (or right-click the minimap button) |
-| `/zeus report` | Your buff-hours, total and today |
+| `/zeus report` | Your buff-hours: total, today, and per buff and rank |
 | `/zeus blockers` | Buffs ZEUS has learned get in the way of yours; `/zeus blockers clear` forgets them |
+| `/zeus auras` | Every buff on your target (or on you), with its spell ID and who cast it |
 | `/zeus debug` | Info for bug reports |
 
 ## Settings
@@ -73,6 +79,11 @@ stop. Your Buff Key keeps its normal job the whole time.
 - **Rebuff slider:** how much of a buff should be left before ZEUS refreshes it.
   At 0% it waits until the buff runs out.
 - **PvP protection:** on by default.
+- **Minimap button:** untick it to hide the button; `/zeus` still opens settings.
+- **Track buffs given to me:** the "Given by" line on your buffs and the left-click
+  whisper. Untick it to turn both off. The game only says who cast a buff while
+  it can see them, so strangers are only named with friendly nameplates on (ZEUS
+  turns them on while it's on).
 
 ## Buff-hours
 
@@ -80,12 +91,14 @@ stop. Your Buff Key keeps its normal job the whole time.
 actually adds counts: topping up a 30-minute buff that still has 99% left adds 18
 seconds, not 30 minutes. Buffs you cast yourself count too, and a group buff counts
 once for each person it reaches. Buffs on yourself don't. The numbers are kept on
-your computer only. The details are in [REPORTING.md](REPORTING.md).
+your computer only. It also breaks them down by buff and by rank. The details are in [REPORTING.md](REPORTING.md).
 
 ## Good to know
 
 - ZEUS is made for WoW Forever. It isn't built for Retail or Classic Era.
 - It never casts by itself, and it pauses in combat.
+- ZEUS starts off each time you log in. Nameplates it switched on go back off;
+  nameplates you turned on yourself stay on.
 - With the gamepad UI on, ZEUS takes a break and comes back when you switch to
   mouse and keyboard.
 - Installed both ZEUS and ZEUS Olympus? Only ZEUS Olympus runs, and a popup reminds

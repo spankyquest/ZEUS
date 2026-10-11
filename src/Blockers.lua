@@ -268,11 +268,22 @@ end
 
 -- A targeted nameplate player turned out to need nothing: remember why, so the next
 -- nameplate scan does not target them again for the same buff. These records are
--- marked observed: they describe someone else's buff, not one ZEUS cast.
+-- marked observed: they describe a buff ZEUS saw, not one it cast. One you cast by hand is
+-- also marked mine. For a blessing every blessing they carry is noted, since which one ZEUS
+-- gives depends on the others (Queue.lua).
+local verify
 function Z.NoteVerified(unit, guid, p)
     if not sameUnit(unit, guid) then return end
     local snap = Z.ReadAuras(unit)
     if not usable(snap) then return end
+    if p.blessing then
+        for _, other in ipairs(Z.active) do
+            if other.blessing and other ~= p then verify(unit, guid, other, snap) end
+        end
+    end
+    verify(unit, guid, p, snap)
+end
+function verify(unit, guid, p, snap)
     local t = now()
     local id = Z.Rank(p, UnitLevel(unit))
     local rank = id and Z.SpellRankIndex(p, id)
@@ -288,6 +299,7 @@ function Z.NoteVerified(unit, guid, p)
         Z.Remember(Z.db, guid, p.key, t, duration, t + math.min(math.max(left, 1), duration), {blocker.id})
     elseif aura.found and aura.duration and aura.remaining and aura.remaining > 0 then
         Z.Remember(Z.db, guid, p.key, t, aura.duration, t + aura.remaining)
+        Z.db.memory[guid][p.key].mine = Z.CastByMe(aura.sourceUnit) or nil
     else
         return
     end

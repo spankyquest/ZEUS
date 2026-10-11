@@ -1,7 +1,9 @@
 # ZEUS: total buff-hours provided
 
-Run `/zeus report` to see the lifetime total and today's UTC total. Unmeasured
-successful casts are shown separately and earn no guessed hours.
+Run `/zeus report` to see the lifetime total and today's UTC total, then each buff
+with its ranks (strongest first) and group versions, such as Arcane Brilliance, apart.
+Time measured before 0.5.2 isn't split by spell and is shown as one earlier line.
+Unmeasured successful casts are shown separately and earn no guessed hours.
 
 ## Calculation
 Each successful buff you give adds only the new lifetime granted, whether ZEUS
@@ -63,6 +65,9 @@ GetDailyTotals returns independent tables containing:
 - days: numeric UTC epoch-day -> measured buff-hours. Missing days mean zero.
 - totalBuffHours: sum of all measured daily totals.
 - unmeasuredCasts: UTC epoch-day -> successful casts whose duration wasn't confirmed.
+- spells: spell ID -> measured buff-hours, all days together (since 0.5.2). Each rank
+  and group version has its own ID. Time measured before 0.5.2 is in `days` and
+  totalBuffHours only, so the spells can add up to less than the total.
 
 Day N covers [N*86400, (N+1)*86400). Credit belongs to the success day, including
 when the aura is observed after midnight. It is not spread over the buff's future
@@ -76,7 +81,8 @@ without cast GUIDs consume the matching pending attempt once. Each buff contribu
 its duration independently; a multi-buff recipient can provide multiple additions.
 
 ## Saved history and upgrades
-ZEUSDB.buffReports holds schema 2, daily `seconds` and `unmeasured` maps. No roster or
+ZEUSDB.buffReports holds schema 2, daily `seconds` and `unmeasured` maps, and (since 0.5.2)
+a `spells` map of seconds per spell ID. No roster or
 per-recipient successful-cast history is added. Existing settings/macros are preserved.
 There is no backfill. Existing schema-1 ZEUSDB.castReports is left untouched as an
 archive; `api.GetLegacyCastTotals()` exports a copy with `unit="casts"`. These counts

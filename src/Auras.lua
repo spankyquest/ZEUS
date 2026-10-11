@@ -140,3 +140,37 @@ end
 function Z.Aura(unit, p)
     return Z.MatchAura(Z.ReadAuras(unit), p)
 end
+
+-- Whether an aura's caster (its sourceUnit) is your own character: cast by ZEUS or by hand.
+function Z.CastByMe(unit)
+    if not safe(unit) or type(unit) ~= "string" or unit == "" then return false end
+    if unit == "player" then return true end
+    local guid, mine = UnitGUID(unit), UnitGUID("player")
+    return safe(guid) and safe(mine) and guid ~= nil and guid == mine
+end
+
+-- /zeus auras: every buff on your target (or on you, with no target), with its spell ID, time
+-- left and caster, to find the ID of a buff that keeps one of yours from landing.
+function Z.PrintAuras()
+    local L = Z.L
+    local unit = UnitExists("target") and "target" or "player"
+    local who = Z.FullName(unit) or unit
+    local snap = Z.ReadAuras(unit)
+    if not snap.readable or snap.hidden then Z.Print(string.format(L.AURAS_HIDDEN, who)) return end
+    if #snap.list == 0 then Z.Print(string.format(L.AURAS_NONE, who)) return end
+    Z.Print(string.format(L.AURAS_HEADER, who))
+    local t = GetTime()
+    for _, a in ipairs(snap.list) do
+        local exp = a.expirationTime
+        local left = L.AURA_NO_TIMER
+        if safe(exp) and type(exp) == "number" and exp > 0 then
+            left = string.format(L.AURA_MINUTES, math.max(0, math.ceil((exp - t) / 60)))
+        end
+        local from = L.AURA_FROM_UNKNOWN
+        if Z.CastByMe(a.sourceUnit) then from = L.AURA_FROM_YOU
+        elseif safe(a.sourceUnit) and type(a.sourceUnit) == "string" then
+            from = Z.FullName(a.sourceUnit) or from
+        end
+        Z.Print(string.format(L.AURA_ROW, tostring(a.name), tonumber(a.id) or 0, left, from))
+    end
+end

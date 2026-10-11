@@ -57,34 +57,125 @@ local function basic(unit)
     if not safe(level) or type(level) ~= "number" or level < 1 then return end
     return guid, class, level
 end
-local function blessingFor(class, level)
-    local choices={}
-    for _,key in ipairs(Z.blessings[class] or {}) do choices[#choices+1]=key end
+-- Blessings. A paladin's blessing on a player replaces any other blessing from that paladin,
+-- while blessings from different paladins stack. `snap` is the player's buffs; a nameplate's
+-- can't be read, so there ZEUS goes by what it last cast or saw on them (its memory).
+local function readable(snap) return snap and snap.readable and not snap.hidden end
+-- Who holds blessing p on this player: "mine" when your own character gave it (ZEUS or by
+-- hand), "other" when another paladin did, nil when nobody has it or it can't be told.
+local function holder(guid, p, snap)
+    if readable(snap) then
+        local a = Z.MatchAura(snap,p)
+        if not a.found then return nil end
+        if safe(a.sourceUnit) then return Z.CastByMe(a.sourceUnit) and "mine" or "other" end
+        -- The game hides who cast it: go by memory, so your own is never taken for another's.
+    end
+    local records = Z.db.memory[guid]
+    local r = records and records[p.key]
+    if type(r) ~= "table" or r.blockedBy or now() >= (tonumber(r.expires) or 0) then return nil end
+    if r.observed and not r.mine then return "other" end
+    return "mine"
+end
+-- Whether blessing p can't land on this player now: a bounce hold (Blockers.lua), or a buff
+-- they carry that ZEUS learned blocks it (a scroll, say).
+local function blockedBlessing(guid, p, level, snap)
+    if Z.Held(guid,p,snap) then return true end
+    local id = Z.Rank(p,level)
+    return Z.LearnedBlocker(snap,p,id and Z.SpellRankIndex(p,id)) ~= nil
+end
+-- The one blessing to give this player, from the class's choices you allow (enabled, the
+-- class not skipped in its row, a rank for their level):
+--   1. a blessing you already gave them stays, and is refreshed when due;
+--   2. otherwise the first choice no other paladin has given them and nothing blocks;
+--   3. otherwise (they have them all) the first choice nothing blocks, kept up like any buff.
+local function blessingFor(guid, class, level, snap)
+    local keys, choices = {}, {}
+    for _,key in ipairs(Z.blessings[class] or {}) do keys[#keys+1]=key end
     for _,p in ipairs(Z.active) do
         if p.blessing then
             local found=false
-            for _,key in ipairs(choices) do if key==p.key then found=true end end
-            if not found then choices[#choices+1]=p.key end
+            for _,key in ipairs(keys) do if key==p.key then found=true end end
+            if not found then keys[#keys+1]=p.key end
         end
     end
-    for _, key in ipairs(choices) do
+    for _, key in ipairs(keys) do
         for _, p in ipairs(Z.active) do
-            if p.key == key and enabled(p) and Z.ClassPriority(Z.db,p,class) and Z.Rank(p,level) then return key end
+            if p.key == key and enabled(p) and Z.ClassPriority(Z.db,p,class) and Z.Rank(p,level) then
+                choices[#choices+1]=p
+            end
+        end
+    end
+    if #choices == 0 then return end
+    local held = {}
+    for i, p in ipairs(choices) do
+        held[i] = holder(guid,p,snap)
+        if held[i] == "mine" then return p.key end
+    end
+    local open = {}
+    for i, p in ipairs(choices) do
+        open[i] = not blockedBlessing(guid,p,level,snap)
+        if held[i] ~= "other" and open[i] then return p.key end
+    end
+    for i, p in ipairs(choices) do
+        if open[i] then return p.key end
+    end
+    return choices[1].key
+end
+-- Whether a different blessing of yours on this player should stay: one you gave that is not
+-- yet due for a refresh, or one they clicked off (ZEUS waits its usual time before giving
+-- them anything else). A record of yours that another paladin's blessing has since replaced
+-- doesn't count.
+local function keepOtherBlessing(guid, p, snap)
+    local records = Z.db.memory[guid]
+    for _, other in ipairs(Z.active) do
+        if other.blessing and other ~= p then
+            local who = readable(snap) and holder(guid,other,snap)
+            if who == "mine" then
+                local b = Z.MatchAura(snap,other)
+                if b.duration and b.remaining and b.remaining > b.duration*Z.db.refresh/100 then return true end
+            else
+                local r = records and records[other.key]
+                if r and not r.blockedBy and (not r.observed or r.mine) and who ~= "other"
+                    and Z.Suppressed(Z.db,guid,other.key,now()) then return true end
+            end
         end
     end
 end
--- Decide whether one buff is needed on an already-checked player. `ctx` caches
--- that player's aura snapshot across the buffs evaluated in the same scan.
+-- Damage cancels some buffs (Water Walking). ZEUS decides why one of yours is gone the first
+-- time it sees it missing: in a fight it was knocked off, and it is given again once the fight
+-- ends; otherwise it was clicked off and ZEUS waits its usual time, as for any buff. True while
+-- a knocked-off buff waits for the fight to end.
+local function knockedOff(guid, p, unit)
+    local records = Z.db.memory[guid]
+    local r = records and records[p.key]
+    if type(r) ~= "table" or r.blockedBy or r.observed or now()-(tonumber(r.cast) or 0) < 2 then return false end
+    local ok, fighting = pcall(UnitAffectingCombat, unit)
+    fighting = ok and safe(fighting) and fighting == true
+    if r.knocked == nil then r.knocked = fighting end
+    if not r.knocked then return false end
+    if fighting then return true end
+    records[p.key] = nil
+    return false
+end
+-- Decide whether one buff is needed on an already-checked player. `ctx` caches that player's
+-- aura snapshot and blessing choice across the buffs evaluated in the same scan.
 local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     local priority = Z.ClassPriority(Z.db,p,class)
     if not enabled(p) or not priority then return end
-    if p.blessing and blessingFor(class,level) ~= p.key then return end
     local id = Z.Rank(p,level)
     if not id or not Z.InRange(id,unit) or (not waitForCaster and not Z.Usable(id)) then return end
     local snap = ctx and ctx.auras
     if not snap then
         snap = Z.ReadAuras(unit)
         if ctx then ctx.auras = snap end
+    end
+    if p.blessing then
+        local choice = ctx and ctx.blessing
+        if choice == nil then
+            choice = blessingFor(guid,class,level,snap) or false
+            if ctx then ctx.blessing = choice end
+        end
+        if choice ~= p.key then return end
     end
     local a = Z.MatchAura(snap,p)
     if a.blocked then return end
@@ -93,6 +184,7 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
     if rank and a.rankIndex and a.rankIndex < rank then return end
     -- A buff that bounced this one before, on this player or learned for everyone.
     if Z.Held(guid,p,snap) or Z.LearnedBlocker(snap,p,rank) then return end
+    if p.breaksOnDamage and readable(snap) and not a.found and knockedOff(guid,p,unit) then return end
     local upgrade=Z.CanUpgrade(p,id,a)
     if Z.Suppressed(Z.db,guid,p.key,now()) then
         if not upgrade then return end
@@ -100,16 +192,8 @@ local function evaluate(unit, guid, class, level, p, intent, waitForCaster, ctx)
         -- Allow the just-cast aura to arrive before trusting a stale lower rank.
         if record.cast and now()-record.cast<2 then return end
     end
-    -- Changing the selected blessing must not undo a recipient's opt-out. Only a blessing
-    -- ZEUS put on them counts: not a bounce, and not another paladin's blessing it saw.
-    if p.blessing then
-        local records = Z.db.memory[guid]
-        for _, other in ipairs(Z.active) do
-            local r = records and records[other.key]
-            if other.blessing and r and not r.blockedBy and not r.observed and (other.key~=p.key or not upgrade)
-                and Z.Suppressed(Z.db,guid,other.key,now()) then return end
-        end
-    end
+    -- A new blessing from you would replace your other one: not while that one should stay.
+    if p.blessing and keepOtherBlessing(guid,p,snap) then return end
     if not upgrade and a.found and a.duration and a.remaining and a.remaining > a.duration*Z.db.refresh/100 then return end
     local need, remaining = Z.Need(a,Z.db.refresh,upgrade)
     if not need then return end
@@ -127,6 +211,22 @@ function Z.Candidate(unit, p, intent, waitForCaster)
     local guid, class, level = basic(unit)
     if not guid then return end
     return evaluate(unit,guid,class,level,p,intent,waitForCaster)
+end
+-- A nameplate player ZEUS just targeted for buff p, now that their buffs can be read. For a
+-- blessing those buffs can change the choice (another paladin already gave the one ZEUS
+-- guessed), so the blessing they now call for is given instead.
+function Z.AcquiredCandidate(unit, p, intent, waitForCaster)
+    local guid, class, level = basic(unit)
+    if not guid then return end
+    local ctx = {}
+    local c = evaluate(unit,guid,class,level,p,intent,waitForCaster,ctx)
+    if c or not p.blessing then return c end
+    for _, other in ipairs(Z.active) do
+        if other.blessing and other ~= p then
+            c = evaluate(unit,guid,class,level,other,intent,waitForCaster,ctx)
+            if c then return c end
+        end
+    end
 end
 
 -- Unit tokens to scan, deduplicated, in a reused list. Callers iterate it
@@ -187,7 +287,7 @@ local function scan()
                 local intent = u=="target" and 0 or (u=="mouseover" and 1 or 2)
                 -- Targets acquired by ZEUS stay in world priority, not user intent.
                 if u=="target" and Z.autoTarget == guid then intent=2 end
-                ctx.auras=nil
+                ctx.auras,ctx.blessing=nil,nil
                 for _, p in ipairs(Z.active) do
                     local c = evaluate(u,okGUID,class,level,p,intent,nil,ctx)
                     if c then queue[#queue+1]=c end

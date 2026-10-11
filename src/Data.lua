@@ -33,14 +33,14 @@ profile("mark", "DRUID", "Mark of the Wild", 3600,
     {cover={21849,21850}})
 profile("might", "PALADIN", "Blessing of Might", 3600,
     {{25291,50},{19838,42},{19837,32},{19836,22},{19835,12},{19834,2},{19740,1}},
-    {"WARRIOR","ROGUE","DRUID SHAMAN"},
+    {"WARRIOR","ROGUE","DRUID SHAMAN PALADIN"},
     {blessing=true, cover={25782,25916}})
 profile("wisdom", "PALADIN", "Blessing of Wisdom", 3600,
     {{25290,50},{19854,44},{19853,34},{19852,24},{19850,14},{19742,1}},
-    {"PRIEST","MAGE","DRUID","SHAMAN","HUNTER","WARLOCK"},
+    {"PRIEST","MAGE","DRUID","SHAMAN","PALADIN","HUNTER","WARLOCK"},
     {blessing=true, mana=true, cover={25894,25918}})
 profile("kings", "PALADIN", "Blessing of Kings", 3600, {{20217,1}},
-    {"DRUID","SHAMAN","HUNTER","WARRIOR ROGUE","WARLOCK PRIEST MAGE"},
+    {"DRUID","SHAMAN","PALADIN","HUNTER","WARRIOR ROGUE","WARLOCK PRIEST MAGE"},
     {blessing=true, cover={25898}})
 profile("breath", "WARLOCK", "Unending Breath", 600, {{5697,1}},
     {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN","SHAMAN","DRUID"},
@@ -54,13 +54,16 @@ profile("waterbreathing", "SHAMAN", "Water Breathing", 600, {{131,1}},
     {cover={5697}, reagent=17057})
 profile("waterwalking", "SHAMAN", "Water Walking", 600, {{546,1}},
     {"WARRIOR ROGUE HUNTER MAGE PRIEST PALADIN WARLOCK","DRUID"},
-    {defaultOff=true, reagent=17058})
--- One blessing per recipient. Unknown hybrid specializations favor Kings.
+    {defaultOff=true, reagent=17058, breaksOnDamage=true}) -- Any damage cancels it.
+-- Each paladin gives a player one blessing (their next one replaces it), while blessings from
+-- different paladins stack. These are the choices for each class, best first; Queue.lua skips
+-- one another paladin already gave. ZEUS can't tell a hybrid's spec, so hybrids start at Kings.
 Z.blessings = {
     WARRIOR={"might","kings"}, ROGUE={"might","kings"},
     PRIEST={"wisdom","kings"}, MAGE={"wisdom","kings"},
     WARLOCK={"wisdom","kings"}, HUNTER={"kings","wisdom"},
     DRUID={"kings","wisdom","might"}, SHAMAN={"kings","wisdom","might"},
+    PALADIN={"kings","wisdom","might"},
 }
 
 profile("spirit", "PRIEST", "Divine Spirit", 3600,

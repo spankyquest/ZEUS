@@ -26,6 +26,9 @@ function Z.InitializeReporting()
     end
     db.buffReports.seconds=clean(db.buffReports.seconds,false)
     db.buffReports.unmeasured=clean(db.buffReports.unmeasured,true)
+    -- Seconds per spell ID (each rank and group version apart), all days together. Kept since
+    -- 0.5.2; time measured before that is only in the daily totals.
+    db.buffReports.spells=clean(db.buffReports.spells,false)
 end
 local function key(guid,p) return guid..":"..p.key end
 -- One observation per recipient of a cast. A cast is settled when all of its
@@ -37,6 +40,11 @@ local function finish(r,seconds)
     local cast,db=r.cast,Z.db.buffReports
     if seconds~=nil then
         db.seconds[cast.day]=(db.seconds[cast.day] or 0)+seconds
+        local id=r.spellID
+        if finite(id) and id==math.floor(id) then
+            if type(db.spells)~="table" then db.spells={} end
+            db.spells[id]=(db.spells[id] or 0)+seconds
+        end
         cast.measured=true
     end
     cast.open=cast.open-1
@@ -229,7 +237,7 @@ local API={apiVersion=3,addonVersion=Z.version,trust="client-reported"}
 function API.GetDailyTotals()
     local out={schema=3,trust="client-reported",timezone="UTC",unit="buff-hours",
         metric="total_buff_hours_provided",label="Total buff-hours provided",
-        addonVersion=Z.version,days={},unmeasuredCasts={},totalBuffHours=0}
+        addonVersion=Z.version,days={},unmeasuredCasts={},spells={},totalBuffHours=0}
     if not Z.db then return out end
     out.characterGUID=UnitGUID("player") out.characterName=Z.FullName("player")
     out.realm=GetRealmName and GetRealmName() out.generatedAt=timestamp()
@@ -238,6 +246,7 @@ function API.GetDailyTotals()
         out.totalBuffHours=out.totalBuffHours+seconds/3600
     end
     for day,n in pairs(Z.db.buffReports.unmeasured) do out.unmeasuredCasts[day]=n end
+    for id,seconds in pairs(Z.db.buffReports.spells or {}) do out.spells[id]=seconds/3600 end
     return out
 end
 function API.GetLegacyCastTotals()
@@ -253,12 +262,60 @@ end
 Z.ReportingAPI=API
 _G.ZEUSReportingAPI=API
 
+-- The buff a spell ID belongs to, and its rank index (1 = strongest); no index for a group
+-- or other version of it (Arcane Brilliance for Arcane Intellect, say).
+local function buffOf(id)
+    for _,p in ipairs(Z.profiles) do
+        for i,rank in ipairs(p.ranks) do if rank[1]==id then return p,i end end
+    end
+    for _,p in ipairs(Z.profiles) do if p.ids[id] then return p,nil end end
+end
+-- /zeus report: the total and today, then each buff with its ranks (strongest first) and
+-- group versions, then time from before the split by spell, then unmeasured casts.
 function Z.PrintBuffReport()
+    local L=Z.L
     local report=API.GetDailyTotals()
     local today=math.floor((report.generatedAt or 0)/86400)
-    Z.Print(string.format(Z.L.REPORT_TOTAL,
-        report.totalBuffHours,report.days[today] or 0))
+    Z.Print(string.format(L.REPORT_TOTAL,report.totalBuffHours,report.days[today] or 0))
+    local buffs,loose,split={},{},0
+    for id,hours in pairs(report.spells) do
+        split=split+hours
+        local p,index=buffOf(id)
+        if p then
+            local b=buffs[p] or {hours=0,rows={}}
+            buffs[p]=b
+            b.hours=b.hours+hours
+            b.rows[#b.rows+1]={id=id,index=index,hours=hours}
+        else
+            loose[#loose+1]={id=id,hours=hours}
+        end
+    end
+    local function order(x,y)
+        local a,b=x.index or math.huge,y.index or math.huge
+        if a~=b then return a<b end
+        return x.id<y.id
+    end
+    for _,p in ipairs(Z.profiles) do
+        local b=buffs[p]
+        if b then
+            Z.Print(string.format(L.REPORT_SPELL,p.label,b.hours))
+            table.sort(b.rows,order)
+            for _,row in ipairs(b.rows) do
+                if not row.index then
+                    Z.Print(string.format(L.REPORT_VERSION,Z.SpellName(row.id,tostring(row.id)),row.hours))
+                elseif #p.ranks>1 then
+                    Z.Print(string.format(L.REPORT_RANK,#p.ranks-row.index+1,row.hours))
+                end
+            end
+        end
+    end
+    table.sort(loose,order)
+    for _,row in ipairs(loose) do
+        Z.Print(string.format(L.REPORT_SPELL,Z.SpellName(row.id,tostring(row.id)),row.hours))
+    end
+    local unsplit=report.totalBuffHours-split
+    if unsplit>=0.005 then Z.Print(string.format(L.REPORT_UNSPLIT,unsplit)) end
     local unmeasured=0
     for _,n in pairs(report.unmeasuredCasts) do unmeasured=unmeasured+n end
-    if unmeasured>0 then Z.Print(string.format(Z.L.REPORT_UNMEASURED,unmeasured)) end
+    if unmeasured>0 then Z.Print(string.format(L.REPORT_UNMEASURED,unmeasured)) end
 end

@@ -25,6 +25,7 @@
     <Script file="../Queue.lua"/>
     <Script file="../Buttons.lua"/>
     <Script file="../Nameplates.lua"/>
+    <Script file="../Givers.lua"/>
     <Script file="../Macro.lua"/>
     <Script file="../PriorityUI.lua"/>
     <Script file="../UI.lua"/>

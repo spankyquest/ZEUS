@@ -83,7 +83,7 @@ function Z.UpdateStatus()
     if enableButton then enableButton:SetText(Z.IsEnabled() and L.TURN_OFF or L.TURN_ON) end
     local text
     if not Z.IsEnabled() then text=L.STATUS_OFF
-    elseif not Z.FriendsEnabled() then text=L.STATUS_NEEDS_PLATES
+    elseif not Z.FriendsEnabled() then text=Z.NeedPlatesText(true)
     elseif InCombatLockdown() then text=L.STATUS_COMBAT
     elseif #Z.active==0 then text=L.NO_BUFFS
     elseif Z.current then
@@ -108,6 +108,8 @@ function Z.RefreshSettings()
         or string.format(L.REBUFF_AT,Z.db.refresh))
     if slider:GetValue()~=Z.db.refresh then slider:SetValue(Z.db.refresh) end
     for _,editor in pairs(Z.priorityEditors) do editor.render() end
+    if Z.minimapCheck then Z.minimapCheck:SetChecked(not (type(Z.db.minimap)=="table" and Z.db.minimap.hide)) end
+    if Z.giversCheck then Z.giversCheck:SetChecked(Z.db.trackGivers~=false) end
     Z.UpdateStatus()
 end
 function Z.CancelCapture()
@@ -184,6 +186,18 @@ function Z.UpdateMinimap()
         minimap.icon:SetDesaturated(not Z.IsEnabled())
         if minimap.hovered then minimap:GetScript("OnEnter")(minimap) end
     end
+end
+-- Shows or hides the minimap button. Z.db.minimap.hide is LibDBIcon's own saved flag, so the
+-- choice holds across logins and minimap-collector addons see it.
+function Z.SetMinimapShown(shown)
+    if type(Z.db.minimap)~="table" then Z.db.minimap={} end
+    Z.db.minimap.hide=not shown or nil
+    local icons=LibStub("LibDBIcon-1.0",true)
+    if icons and icons:IsRegistered("ZEUS") then
+        if shown then icons:Show("ZEUS") else icons:Hide("ZEUS") end -- gp:minimap
+    end
+    if not shown and minimap and minimap.hovered then minimap.hovered=nil GameTooltip:Hide() end -- gp:tooltips
+    if Z.minimapCheck then Z.minimapCheck:SetChecked(shown and true or false) end
 end
 local function createMinimap() -- gp:minimap
     local ldb=LibStub("LibDataBroker-1.1")
@@ -324,7 +338,7 @@ function Z.CreateUI()
         end
     end
     if Z.class=="PALADIN" then
-        label(settings,L.ONE_BLESSING,25,y,410)
+        label(settings,L.ONE_BLESSING,25,y,710)
         y=y-25
     end
     y=y-12
@@ -361,9 +375,19 @@ function Z.CreateUI()
     end)
     safety:SetChecked(Z.db.pvp)
     tooltip(safety,L.PVP_TIP)
-    warning=label(settings,"",25,y-31,410)
+    warning=label(settings,"",25,y-31,355)
     warning:SetTextColor(1,0.65,0.35)
     updateWarning(Z.db.pvp)
+    local minimapCheck=check(settings,L.MINIMAP_BUTTON,388,y,function(value) Z.SetMinimapShown(value) end)
+    minimapCheck.caption:SetWidth(320)
+    minimapCheck:SetChecked(not (type(Z.db.minimap)=="table" and Z.db.minimap.hide))
+    tooltip(minimapCheck,L.MINIMAP_BUTTON_TIP)
+    Z.minimapCheck=minimapCheck
+    local giversCheck=check(settings,L.TRACK_GIVERS,388,y-28,function(value) Z.SetTrackGivers(value) end)
+    giversCheck.caption:SetWidth(320)
+    giversCheck:SetChecked(Z.db.trackGivers~=false)
+    tooltip(giversCheck,L.TRACK_GIVERS_TIP)
+    Z.giversCheck=giversCheck
     local height=-y+144
     settings:SetHeight(height)
     section(settings,14,-height+80,732,36)
