@@ -112,7 +112,10 @@ local function names()
     local out, seen = {}, {}
     -- Out of mana for all of it: the queue stays, under a line that says why nothing happens.
     if Z.OutOfMana and Z.OutOfMana() then out[1] = "|cff5599ff" .. L.QUEUE_OOM .. "|r" end
-    for _, c in ipairs(Z.lastScan or {}) do
+    -- Buffing back: the giver of a hovered buff (or who has just buffed you) is next: on top.
+    local list = Z.lastScan or {}
+    if Z.current and Z.current.back then list = {Z.current, unpack(list)} end
+    for _, c in ipairs(list) do
         if c.guid and c.name and not seen[c.guid] then
             seen[c.guid] = true
             out[#out + 1] = line(c)

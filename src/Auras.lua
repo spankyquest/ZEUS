@@ -21,6 +21,15 @@ function Z.Known(id)
     if IsSpellKnown and IsSpellKnown(id) then return true end
     return false
 end
+-- The level a class trainer teaches a rank from: the game's own answer, or Data.lua's when the
+-- game can't say.
+function Z.LearnLevel(r)
+    if C_Spell and C_Spell.GetSpellLevelLearned then
+        local ok, level = pcall(C_Spell.GetSpellLevelLearned, r[1])
+        if ok and safe(level) and type(level) == "number" and level > 0 then return level end
+    end
+    return r[3] or 1
+end
 function Z.ProfileDuration(p)
     return p.duration * (p.blessing and Z.Known(BLESSING_DURATION_PASSIVE) and 2 or 1)
 end
@@ -48,6 +57,8 @@ function Z.RefreshSpells()
             Z.active[#Z.active+1] = p
         end
     end
+    -- A rank learned at the trainer since a lower one was picked: back to the strongest.
+    if Z.db and Z.UpdateRankChoices then Z.UpdateRankChoices(Z.db) end
 end
 function Z.FullName(unit)
     local name
@@ -62,6 +73,27 @@ function Z.InRange(id, unit)
     if C_Spell and C_Spell.IsSpellInRange then value = C_Spell.IsSpellInRange(id,unit)
     elseif IsSpellInRange then value = IsSpellInRange(Z.SpellName(id),unit) end
     return safe(value) and (value == true or value == 1)
+end
+-- Seconds until a spell can be cast again, the global cooldown included; 0 when it can be cast
+-- now or the game won't say.
+function Z.CooldownLeft(id)
+    local get = C_Spell and C_Spell.GetSpellCooldown
+    if type(get) ~= "function" then return 0 end
+    local ok, info = pcall(get, id)
+    if not ok or not safe(info) or type(info) ~= "table" then return 0 end
+    local start, duration = info.startTime, info.duration
+    if not safe(start) or not safe(duration) or type(start) ~= "number" or type(duration) ~= "number" then return 0 end
+    if start <= 0 or duration <= 0 then return 0 end
+    return math.max(0, start + duration - GetTime())
+end
+-- The game's spell queue window in seconds: a cast pressed this close to the end of the global
+-- cooldown waits and goes off as it ends. 0 when the game won't say.
+function Z.QueueWindow()
+    local get = C_Spell and C_Spell.GetSpellQueueWindow
+    if type(get) ~= "function" then return 0 end
+    local ok, ms = pcall(get)
+    if not ok or not safe(ms) or type(ms) ~= "number" or ms <= 0 then return 0 end
+    return ms / 1000
 end
 -- Whether you can cast a spell now; when you can't, the second value says it's only for mana.
 function Z.Usable(id)

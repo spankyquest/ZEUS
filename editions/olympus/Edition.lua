@@ -16,4 +16,5 @@ Z.tagline = {
     esMX = "Pulsa tu tecla y ZEUS elige al siguiente miembro de Olympus que necesite un buff.",
     frFR = "Appuie sur ta touche et ZEUS choisit le prochain membre d'Olympus qui a besoin d'un buff.",
     ptBR = "Aperte sua tecla e o ZEUS escolhe o próximo membro do Olympus que precisa de buff.",
+    zhCN = "按下按键，ZEUS为你挑出下一位需要Buff的Olympus公会成员。",
 }

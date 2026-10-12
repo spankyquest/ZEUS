@@ -366,6 +366,27 @@ function Z.BuildQueue()
     end
     return queue
 end
+-- Buffing back (Givers.lua): a giver (of the buff under your mouse, or with Instant buff-back,
+-- someone who has just buffed you), when ZEUS can buff them. The buff they need first, in queue
+-- order, with back=true; nil when they can't be buffed now (out of sight of the game, out of
+-- range, already buffed, or any rule the queue would apply).
+function Z.BuffBackCandidate(giver)
+    if type(giver) ~= "table" then return end
+    for _, u in ipairs(tokens()) do
+        local guid = UnitGUID(u)
+        if guid and safe(guid) and (giver.guid and guid == giver.guid or not giver.guid and Z.FullName(u) == giver.name) then
+            local okGUID, class, level = basic(u)
+            if not okGUID then return end
+            local ctx, best = {}, nil
+            for _, p in ipairs(Z.active) do
+                local c = evaluate(u, okGUID, class, level, p, 0, nil, ctx)
+                if c and not c.oom and (not best or Z.Compare(c, best)) then best = c end
+            end
+            if best then best.back = true end
+            return best
+        end
+    end
+end
 -- Out of mana for everything in the queue: there is a queue, and ZEUS waits for mana.
 function Z.OutOfMana()
     local first = Z.queue and Z.queue[1]

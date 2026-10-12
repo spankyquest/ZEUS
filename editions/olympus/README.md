@@ -1,6 +1,6 @@
 # ZEUS Olympus — Zero Effort Utility Spamming
 
-**By SpankyQuest · 0.5.3 · World of Warcraft: Forever**
+**By SpankyQuest · 0.5.4 · World of Warcraft: Forever**
 
 **Power your allies. Crush your enemies.**
 
@@ -20,6 +20,36 @@ that can buff: Mages, Priests, Druids, Paladins, Warlocks, and Shamans.
 It knows which guilds belong to Olympus by itself, so you don't need the Olympus
 Guild addon installed, but it works alongside it.
 
+## In your language
+
+- **Deutsch · deDE (German):** Buffen auf Knopfdruck für deine Olympus-Gilde in WoW
+  Forever: Drück deine Taste, und ZEUS Olympus schnappt sich das nächste
+  Olympus-Gildenmitglied in der Nähe, dem dein Buff fehlt, nimmt es ins Ziel und bufft
+  es. Ideal in der Stadt, beim Flugmeister oder vor dem Dungeon – und nur außerhalb
+  des Kampfes. Klassen: Magier, Priester, Druide, Paladin, Hexenmeister, Schamane.
+- **Español · esES (Spanish, Spain):** Bufea a tu hermandad Olympus con un solo botón
+  en WoW Forever: pulsas tu tecla y ZEUS Olympus pilla al siguiente miembro de Olympus
+  cercano que no tenga tu buff, lo selecciona y se lo lanza. Perfecto en la ciudad, en
+  el maestro de vuelo o antes de una mazmorra, y solo fuera de combate. Clases: Mago,
+  Sacerdote, Druida, Paladín, Brujo, Chamán.
+- **Español · esMX (Spanish, Latin America):** Buffea a tu hermandad Olympus con un
+  solo botón en WoW Forever: presionas tu tecla y ZEUS Olympus encuentra al siguiente
+  miembro de Olympus cercano que no tenga tu buff, lo selecciona y se lo lanza. Súper
+  práctico en la ciudad, con el maestro de vuelo o antes de entrar a un calabozo, y
+  solo funciona fuera de combate. Clases: Mago, Sacerdote, Druida, Paladín, Brujo,
+  Chamán.
+- **Français · frFR (French):** Buffer ta guilde Olympus en un seul bouton sur WoW
+  Forever : tu appuies sur ta touche et ZEUS Olympus trouve le prochain membre
+  d'Olympus à côté qui n'a pas ton buff, le cible et le lui lance. Parfait en ville,
+  chez le maître de vol ou avant un donjon, et seulement hors combat. Classes : Mage,
+  Prêtre, Druide, Paladin, Démoniste, Chaman.
+- **Português · ptBR (Portuguese, Brazil):** Buff pra sua guilda Olympus com um botão
+  só no WoW Forever: aperta sua tecla e o ZEUS Olympus acha o próximo membro do
+  Olympus por perto que está sem o seu buff, seleciona e já manda o buff. Perfeito na
+  cidade, no mestre de voo ou antes da masmorra, e só fora de combate. Classes: Mago,
+  Sacerdote, Druida, Paladino, Bruxo, Xamã.
+- **简体中文 · zhCN (Simplified Chinese):** 《魔兽世界：无限》（WoW Forever）Olympus公会专用的一键上Buff：按下按键，ZEUS Olympus（宙斯·奥林匹斯）就会找到附近下一位缺你Buff的Olympus公会成员，自动选中并施放。主城、飞行点、进本前都超好用，只在脱战时工作。支持职业：法师、牧师、德鲁伊、圣骑士、术士、萨满祭司。
+
 ## What it does
 
 - **Auto-targeting.** Your target comes first, then the Olympus members around
@@ -28,7 +58,8 @@ Guild addon installed, but it works alongside it.
   Intellect to mana users, Might to warriors and rogues, and so on.
 - **Olympus members only.** Players outside Olympus guilds are skipped.
 - **The right rank.** Low-level players get a rank they can take, and anyone with
-  a weaker rank of your buff gets an upgrade.
+  a weaker rank of your buff gets an upgrade. Under Advanced you can let ZEUS cast
+  a lower rank to save mana; learn a new one at your trainer and it switches to it.
 - **All your buffs at once.** A player gets everything you've ticked before ZEUS
   moves on.
 - **Fast enough for flight paths.** ZEUS has the next buff ready before you press,
@@ -43,7 +74,11 @@ Guild addon installed, but it works alongside it.
   your guildmates.
 - **See who buffed you.** Hover one of your own buffs to see who gave it.
   Left-click it to whisper them a thank-you.
-- **Your language.** English, Deutsch, Español, Français and Português (Brasil).
+- **Buff them back.** Hover one of your own buffs and press your Buff Key or the
+  Buff macro: ZEUS buffs whoever gave it, if they need one of your buffs and are in
+  range. It still works for a few seconds after you move the mouse away, so you can
+  click the macro on your action bar.
+- **Your language.** English, Deutsch, Español, Français, Português (Brasil) and 简体中文.
 
 Paladins hand out one blessing per player, picked by class: Might for warriors and
 rogues, Wisdom for casters, Kings for hunters, druids, shamans and other paladins.
@@ -54,7 +89,7 @@ stays put and gets refreshed.
 ## Getting started
 
 1. Install ZEUS Olympus with the CurseForge app, or download
-   `ZEUS-0.5.3-olympus.zip` from the
+   `ZEUS-0.5.4-olympus.zip` from the
    [Releases](https://github.com/spankyquest/ZEUS/releases) page (not the green
    **Code** button) and unzip it into `Interface/AddOns` so you end up with
    `Interface/AddOns/ZEUS_Olympus/ZEUS_Olympus.toc`.
@@ -86,10 +121,17 @@ after you stop. Your Buff Key keeps its normal job the whole time.
 
 ## Settings
 
+The settings window (`/zeus`) closes by itself when a fight starts, and can't be
+opened again until the fight is over.
+
 - **Buffs:** tick the ones you want handed out.
-- **Class order:** click **Edit Order** next to a buff, then drag the class tiles
-  (leftmost goes first) or right-click one to skip that class. Click **Lock Order**
-  when you're done; closing the window locks it too.
+- **Class order and rank:** click **Edit** next to a buff, then drag the class
+  tiles (leftmost goes first) or right-click one to skip that class. With
+  **Enable lower rank buffs** ticked under Advanced, a buff with ranks lists them
+  under the tiles: pick the one ZEUS casts (the strongest you know, to begin
+  with). Ranks you haven't learned are greyed out with the level your trainer
+  teaches them from. Click **Lock** when you're done; closing the window locks it
+  too.
 - **Rebuff slider:** how much of a buff should be left before ZEUS refreshes it
   (25% to begin with). At 0% it waits until the buff runs out.
 - **Restore Defaults** (top right, beside Advanced): puts every setting back the way
@@ -106,6 +148,13 @@ after you stop. Your Buff Key keeps its normal job the whole time.
     they're back.
   - **Skip level 1 players:** on by default, for the fresh alts and bank characters
     parked in town.
+  - **Instant buff-back:** off by default. When another player buffs you, they go
+    first in the queue for a minute: your next press of the Buff Key or the Buff
+    macro buffs them back (targeting them first if ZEUS has to), if they need one of
+    your buffs. Needs **Track buffs given to me**.
+  - **Enable lower rank buffs:** off by default. Lets you pick a lower rank of a
+    buff to save mana, under its class tiles when you click **Edit**. Off, ZEUS
+    casts your strongest rank.
   - **PvP protection:** on by default. While it's off, a warning under the box says
     that buffing PvP-flagged players can flag you too.
   - **Minimap button:** untick it to hide the button; `/zeus` still opens settings.
@@ -113,7 +162,8 @@ after you stop. Your Buff Key keeps its normal job the whole time.
     whisper. Untick it to turn both off. The game only says who cast a buff while
     it can see them, so strangers are only named with friendly nameplates on (ZEUS
     turns them on while it's enabled). The givers it knows are remembered through a
-    `/reload` or logging out and back in, for as long as their buffs last.
+    `/reload` or logging out and back in, for as long as their buffs last. Buffing
+    them back (hover a buff, press your key) needs this on too.
   - **Protect buffs from right-click:** off by default. When it's on, right-clicking
     one of your buffs (or a weapon enchant) doesn't remove it straight away: its
     tooltip says "Right-click to confirm removal", and a second right-click within

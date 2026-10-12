@@ -32,22 +32,37 @@ local function classify(unit)
     local name = Z.FullName(unit)
     if not name then return end
     local _, class = UnitClass(unit)
-    return {kind="player", name=name, class=safe(class) and type(class) == "string" and class or nil}
+    return {kind="player", name=name, class=safe(class) and type(class) == "string" and class or nil, guid=guid}
 end
 local function expiresOf(aura)
     local e = aura.expirationTime
     if safe(e) and type(e) == "number" and e > 0 then return e end
 end
+-- Instant buff-back (Advanced, off by default): a player who has just buffed you goes first in the
+-- queue, before your target, for a minute or until they need nothing of yours (Core.lua arms
+-- them with Queue.lua's Z.BuffBackCandidate, as for a hovered buff). Oldest first.
+local BACK_SECONDS = 60
+local backs = {}
+local function buffedBy(receipt)
+    if not Z.db or Z.db.instantBuffBack ~= true or receipt.kind ~= "player" or not receipt.guid then return end
+    for i = #backs, 1, -1 do if backs[i].giver.guid == receipt.guid then table.remove(backs, i) end end
+    backs[#backs + 1] = {giver=receipt, at=GetTime()}
+end
 -- Note who cast a buff that landed (or was updated). A rebuff by someone the game can't name
--- (the buff now lasts longer) makes the old receipt wrong, so it is dropped.
-local function note(aura, updated)
+-- (the buff now lasts longer) makes the old receipt wrong, so it is dropped. `fresh`: the buff
+-- has just been cast on you (added, or updated to last longer), not read again at login.
+local function note(aura, updated, fresh)
     if not safe(aura) or type(aura) ~= "table" then return end
     local id = aura.auraInstanceID
     if not safe(id) or type(id) ~= "number" or not safe(aura.isHelpful) or not aura.isHelpful then return end
     local receipt, expires = classify(aura.sourceUnit), expiresOf(aura)
     if receipt then
+        local old = receipts[id]
         receipt.expires = expires
         receipts[id] = receipt
+        if fresh and (not updated or not old or not old.expires or (expires and expires > old.expires + 1)) then
+            buffedBy(receipt)
+        end
     elseif updated then
         local old = receipts[id]
         if old and expires and (not old.expires or expires > old.expires + 1) then receipts[id] = nil end
@@ -93,7 +108,7 @@ local function claim(aura)
     end
     if best then
         local p = table.remove(pending, best)
-        receipts[id] = {kind="player", name=p.name, class=p.class, expires=expires}
+        receipts[id] = {kind="player", name=p.name, class=p.class, guid=p.guid, expires=expires}
         Z.giverStats.restored = Z.giverStats.restored + 1
     end
 end
@@ -111,7 +126,7 @@ local function saveGivers()
             if ok and safe(aura) and type(aura) == "table" and number(aura.spellId) then
                 local expires = expiresOf(aura)
                 list[#list + 1] = {spell=aura.spellId, duration=number(aura.duration),
-                    left=expires and expires - now or nil, name=r.name, class=r.class}
+                    left=expires and expires - now or nil, name=r.name, class=r.class, guid=r.guid}
             end
         end
     end
@@ -126,7 +141,8 @@ function Z.LoadGivers()
     for _, p in ipairs(saved.list) do
         if type(p) == "table" and type(p.spell) == "number" and type(p.name) == "string" and p.name ~= "" then
             pending[#pending + 1] = {spell=p.spell, duration=tonumber(p.duration), left=tonumber(p.left),
-                name=p.name, class=type(p.class) == "string" and p.class or nil}
+                name=p.name, class=type(p.class) == "string" and p.class or nil,
+                guid=type(p.guid) == "string" and p.guid or nil}
         end
     end
     pendingAt, pendingUntil = tonumber(saved.at) or time(), GetTime() + 30
@@ -163,10 +179,10 @@ function Z.NoteGivers(unit, info)
     end
     local added, updated, removed = info.addedAuras, info.updatedAuraInstanceIDs, info.removedAuraInstanceIDs
     if safe(added) and type(added) == "table" then
-        for _, aura in ipairs(added) do note(aura) claim(aura) end
+        for _, aura in ipairs(added) do note(aura, false, true) claim(aura) end
     end
     if safe(updated) and type(updated) == "table" then
-        for _, id in ipairs(updated) do note(byInstance(id), true) end
+        for _, id in ipairs(updated) do note(byInstance(id), true, true) end
     end
     if safe(removed) and type(removed) == "table" then
         for _, id in ipairs(removed) do
@@ -191,6 +207,55 @@ end
 function Z.BuffGiver(id)
     local receipt = Z.BuffReceipt(id)
     if receipt and receipt.kind == "player" then return receipt end
+end
+
+-- Buffing back. With the mouse over one of your buffs, the next press of the Buff Key or the
+-- Buff macro buffs whoever gave it, if they need one of your buffs and ZEUS could buff them
+-- anyway (Queue.lua's Z.BuffBackCandidate, armed by Core.lua ahead of the queue). That holds for a
+-- few seconds after the mouse leaves too: time to click a Buff macro on an action bar.
+local HOVER_GRACE = 3
+local hovered -- {giver=, at=}
+-- Your buff under the mouse: its aura instance, or nil.
+local function buffUnderMouse()
+    if type(GetMouseFoci) ~= "function" then return end
+    local ok, foci = pcall(GetMouseFoci)
+    if not ok or not safe(foci) or type(foci) ~= "table" then return end
+    local frame = foci[1]
+    if type(frame) ~= "table" then return end
+    local read, kind, info, unit = pcall(function() return frame.auraType, frame.buttonInfo, frame.unit end)
+    if not read or kind ~= "Buff" or type(info) ~= "table" or (unit ~= nil and unit ~= "player") then return end
+    local got, id = pcall(function() return info.auraInstanceID end)
+    if got and safe(id) and type(id) == "number" then return id end
+end
+function Z.HoveredGiver()
+    if not tracking() or not Z.Allowed("buff-givers") then hovered = nil return end
+    local id = buffUnderMouse()
+    local giver = id and Z.BuffGiver(id)
+    if giver then
+        hovered = {giver=giver, at=GetTime()}
+        return giver
+    end
+    if hovered and GetTime() - hovered.at < HOVER_GRACE then return hovered.giver end
+    hovered = nil
+end
+-- Everyone to buff back before the queue, in order: the giver of a hovered buff, then (with
+-- Instant buff-back) the players who have just buffed you, oldest first.
+function Z.BuffBackGivers()
+    local list = {}
+    local giver = Z.HoveredGiver()
+    if giver then list[1] = giver end
+    if Z.db and Z.db.instantBuffBack == true and tracking() and Z.Allowed("buff-givers") then
+        local now = GetTime()
+        for i = #backs, 1, -1 do if now - backs[i].at >= BACK_SECONDS then table.remove(backs, i) end end
+        for _, b in ipairs(backs) do list[#list + 1] = b.giver end
+    end
+    return list
+end
+-- The Advanced box. Off forgets who has just buffed you.
+function Z.SetInstantBuffBack(on)
+    Z.db.instantBuffBack = on and true or false
+    if not on then for i = #backs, 1, -1 do backs[i] = nil end end
+    if Z.instantBackCheck then Z.instantBackCheck:SetChecked(Z.db.instantBuffBack) end
 end
 local function colored(giver)
     local color = giver.class and type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[giver.class]

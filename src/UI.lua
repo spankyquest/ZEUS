@@ -7,6 +7,7 @@ local restoreReset
 local advanced, advancedButton, layoutAdvanced
 local rows, pendingKey = {}, nil
 local slider
+local layout
 Z.priorityEditors={}
 local gold={1,0.82,0}
 local function section(parent,x,y,width,height)
@@ -20,6 +21,7 @@ local function rowShade(parent,x,y,width,height,shade)
     local fill=parent:CreateTexture(nil,"BACKGROUND",nil,1)
     fill:SetPoint("TOPLEFT",x,y) fill:SetSize(width,height)
     fill:SetColorTexture(shade,shade,shade,0.7)
+    return fill
 end
 local function label(parent,text,x,y,width,font)
     local t=parent:CreateFontString(nil,"OVERLAY",font or "GameFontHighlightSmall")
@@ -72,13 +74,43 @@ local function check(parent,text,x,y,fn)
     b:SetScript("OnClick",function(self) fn(self:GetChecked() and true or false,self) end)
     return b
 end
+-- `text` can be a function, for a tooltip that says what is true when it shows.
 local function tooltip(control,text) -- gp:tooltips
     control:SetScript("OnEnter",function(self)
         GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
-        GameTooltip:AddLine(text,0.9,0.9,0.9,true)
+        GameTooltip:AddLine(type(text)=="function" and text() or text,0.9,0.9,0.9,true)
         GameTooltip:Show()
     end)
     control:SetScript("OnLeave",function() GameTooltip:Hide() end)
+end
+-- A heading's tooltip: an invisible frame over its text takes the mouse. Dragging it still
+-- moves the window, as dragging the heading did before.
+local function hint(parent,heading,text,width)
+    local f=CreateFrame("Frame",nil,parent)
+    f:SetPoint("TOPLEFT",heading,"TOPLEFT",-2,2)
+    local measured=heading.GetStringWidth and heading:GetStringWidth()
+    f:SetSize((type(measured)=="number" and measured>0 and measured or width or 120)+4,18)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    for _,script in ipairs({"OnDragStart","OnDragStop"}) do
+        f:SetScript(script,function()
+            local fn=parent:GetScript(script)
+            if fn then fn(parent) end
+        end)
+    end
+    tooltip(f,text)
+    return f
+end
+-- The level a class trainer teaches a buff from: that of its first rank (Auras.lua).
+local function learnLevel(entry)
+    return Z.LearnLevel(entry.ranks[#entry.ranks])
+end
+-- Lays the window out again (a buff's ranks shown or hidden while editing); in combat, once it
+-- ends (Core.lua).
+function Z.LayoutSettings()
+    if not layout then return end
+    if InCombatLockdown() then return end
+    layout()
 end
 function Z.UpdateStatus()
     if Z.UpdateQueueWindow then Z.UpdateQueueWindow() end
@@ -106,6 +138,9 @@ function Z.RefreshSettings()
             local learned=#p.learned>0
             row.caption:SetText(p.label..(learned and "" or "  |cff888888"..L.NOT_LEARNED.."|r"))
             row:SetEnabled(learned)
+            -- The caption is part of the box, so hovering the buff's name shows its tooltip too.
+            local w=row.caption.GetStringWidth and row.caption:GetStringWidth()
+            if type(w)=="number" and row.SetHitRectInsets then row:SetHitRectInsets(0,-(math.min(w,320)+8),0,0) end
         end
     end
     thresholdText:SetText(Z.db.refresh==0 and L.REBUFF_EXPIRED
@@ -116,6 +151,8 @@ function Z.RefreshSettings()
     if Z.giversCheck then Z.giversCheck:SetChecked(Z.db.trackGivers~=false) end
     if Z.protectCheck then Z.protectCheck:SetChecked(Z.db.protectBuffs==true) end
     if Z.queueCheck then Z.queueCheck:SetChecked(Z.db.showQueue==true) end
+    if Z.instantBackCheck then Z.instantBackCheck:SetChecked(Z.db.instantBuffBack==true) end
+    if Z.lowerRanksCheck then Z.lowerRanksCheck:SetChecked(Z.db.lowerRanks==true) end
     if Z.pvpCheck then Z.pvpCheck:SetChecked(Z.db.pvp) end
     if layoutAdvanced then layoutAdvanced() end
     if Z.afkCheck then Z.afkCheck:SetChecked(Z.db.skipAFK~=false) end
@@ -170,8 +207,23 @@ local function captureKey()
 end
 function Z.ToggleSettings() -- gp:settings
     if settings:IsShown() then Z.CancelCapture() settings:Hide()
+    elseif InCombatLockdown() then Z.Print(L.NO_COMBAT_SETTINGS)
     elseif not Z.Allowed("settings") then Z.Print(Z.GAMEPAD_PAUSED)
     else settings:Show() Z.RefreshSettings() end
+end
+-- Entering combat closes the window (Core.lua), and Advanced and any key capture with it.
+function Z.CloseSettings()
+    Z.CancelCapture()
+    if settings and settings:IsShown() then settings:Hide() end
+end
+-- Advanced's "Enable lower rank buffs": shows the ranks under the class tiles of a buff being
+-- edited, and lets ZEUS cast the rank picked there. Off, it casts the strongest.
+function Z.SetLowerRanks(on)
+    Z.db.lowerRanks=on and true or false
+    if Z.lowerRanksCheck then Z.lowerRanksCheck:SetChecked(Z.db.lowerRanks) end
+    for _,editor in pairs(Z.priorityEditors) do editor.render() end
+    Z.LayoutSettings()
+    Z.Refresh()
 end
 -- The Escape list (UISpecialFrames): ZEUS's name is added only where the gamepad gate allows,
 -- and taken off at a switch when it is still last (an earlier entry stays until a /reload).
@@ -361,7 +413,9 @@ function Z.CreateUI()
     -- Buff Key on the left, the macros on the right. Together they are as wide as Buff Ordering.
     Z.keyPane=section(settings,14,-73,378,62)
     Z.macrosPane=section(settings,399,-73,347,62)
-    label(settings,L.BUFF_KEY,25,-79,400,"GameFontNormal"):SetTextColor(unpack(gold))
+    local keyHeading=label(settings,L.BUFF_KEY,25,-79,400,"GameFontNormal")
+    keyHeading:SetTextColor(unpack(gold))
+    Z.buffKeyHint=hint(settings,keyHeading,L.BUFF_KEY_TIP,90)
     bindButton=action(settings,L.CHOOSE_KEY,25,-98,230,captureKey)
     Z.bindButton=bindButton
     -- How to choose a key, and the mouse wheel tip, live in the button's tooltip.
@@ -373,6 +427,7 @@ function Z.CreateUI()
     tooltip(resetKey,L.RESET_TIP)
     Z.macrosHeading=label(settings,L.MACROS,410,-79,320,"GameFontNormal")
     Z.macrosHeading:SetTextColor(unpack(gold))
+    Z.macrosHint=hint(settings,Z.macrosHeading,L.MACROS_TIP,70)
     local macro=CreateFrame("Button","ZEUSToggleMacroButton",settings,"SecureHandlerDragTemplate,SecureHandlerStateTemplate")
     macro:SetPoint("TOPLEFT",583,-95) macro:SetSize(36,36)
     macro:SetNormalTexture("Interface/Icons/Spell_Nature_Lightning")
@@ -394,11 +449,15 @@ function Z.CreateUI()
     tooltip(buffMacro,L.BUFF_MACRO_TIP)
     Z.ConfigureToggleMacroButton(buffMacro,"buff")
     -- Buff Ordering: one box with the title and a row per buff (its tick box and class tiles; how
-    -- to edit them is in the Edit Order button's tooltip). Its height is set once the rows are in.
+    -- to edit them is in the Edit button's tooltip). Its height is set once the rows are in.
     -- The queue's sort boxes are under Advanced.
     local y=-150
     local ordering=section(settings,14,-142,732,40)
-    label(settings,Z.class=="PALADIN" and L.BLESSING_ORDERING or L.BUFF_ORDERING,25,y,230,"GameFontNormal")
+    local shades,keys={},{}
+    -- The title's tooltip says what the box is for; a paladin's says how blessings are picked
+    -- instead (the boxes and Edit explain themselves).
+    local orderingTitle=label(settings,Z.class=="PALADIN" and L.BLESSING_ORDERING or L.BUFF_ORDERING,25,y,230,"GameFontNormal")
+    Z.orderingHint=hint(settings,orderingTitle,Z.class=="PALADIN" and L.ONE_BLESSING or L.BUFF_ORDERING_TIP,150)
     y=y-28
     if #Z.active==0 then
         label(settings,L.NO_BUFFS,25,y,410)
@@ -406,23 +465,33 @@ function Z.CreateUI()
     else
         for i,p in ipairs(Z.active) do
             local entry=p
-            rowShade(settings,18,y+5,724,71,(i%2==1) and 0.10 or 0.045)
+            shades[i],keys[i]=rowShade(settings,18,y+5,724,71,(i%2==1) and 0.10 or 0.045),p.key
             local row=check(settings,p.label,22,y,function(value)
                 Z.db.enabled[entry.key]=value Z.Refresh()
             end)
             rows[i]=row
-            if entry.reagent then tooltip(row,L.REAGENT_TIP) end
-            Z.priorityEditors[p.key]=Z.CreatePriorityRow(settings,p,y)
+            -- Its tooltip: what the box does, or for a buff not learned yet, where to learn it.
+            if row.SetMotionScriptsWhileDisabled then row:SetMotionScriptsWhileDisabled(true) end
+            tooltip(row,function()
+                local text
+                if #entry.learned==0 then
+                    local learn,level=learnLevel(entry),UnitLevel("player")
+                    local reached=Z.Safe(level) and type(level)=="number" and level>=learn
+                    text=string.format(reached and L.NOT_LEARNED_NOW or L.NOT_LEARNED_AT,entry.label,learn)
+                else
+                    text=string.format(L.SPELL_TIP,entry.label)
+                end
+                if entry.reagent then text=text.."\n\n"..L.REAGENT_TIP end
+                return text
+            end)
+            Z.priorityEditors[p.key]=Z.CreatePriorityRow(settings,p,y,Z.LayoutSettings)
             y=y-77
         end
     end
-    if Z.class=="PALADIN" then
-        label(settings,L.ONE_BLESSING,25,y,710)
-        y=y-25
-    end
+    Z.buffRows=rows
     ordering:SetHeight(-149-y)
     y=y-12
-    section(settings,14,y+10,732,73)
+    local sliderPane=section(settings,14,y+10,732,73)
     thresholdText=label(settings,"",25,y,710,"GameFontNormal")
     -- The current labelled slider; OptionsSliderTemplate is now only a deprecated alias of it.
     slider=CreateFrame("Slider","ZEUSRefreshSlider",settings,"UISliderTemplateWithLabels")
@@ -446,7 +515,7 @@ function Z.CreateUI()
     -- Every other box (PvP protection too) is under Advanced.
     local height=-y+153
     settings:SetHeight(height)
-    section(settings,14,-height+80,732,36)
+    local statusPane=section(settings,14,-height+80,732,36)
     status=label(settings,"",25,-height+68,710)
     Z.statusLine=status
     status:SetTextColor(1,0.82,0)
@@ -455,6 +524,43 @@ function Z.CreateUI()
     tooltip(enableButton,L.TOGGLE_TIP)
     local report=action(settings,L.REPORT_BUTTON,384,-height+36,360,Z.PrintBuffReport)
     tooltip(report,L.REPORT_TIP)
+    -- Laying out again from the buff rows down, when a row being edited shows its ranks or hides
+    -- them. Everything lands where the code above puts it; a row with its ranks open pushes the
+    -- rows under it, the slider and the bottom of the window down. The window grows downward:
+    -- its top stays put.
+    local placeAt=function(region,x,top) region:ClearAllPoints() region:SetPoint("TOPLEFT",x,top) end
+    layout=function()
+        local y=-178
+        if #shades==0 then y=y-30 end
+        for i,shade in ipairs(shades) do
+            local row,editor=rows[i],Z.priorityEditors[keys[i]]
+            local extra=editor and editor.extra() or 0
+            placeAt(shade,18,y+5)
+            shade:SetHeight(71+extra)
+            placeAt(row,22,y)
+            placeAt(row.caption,53,y-6)
+            if editor then editor.place(y) end
+            y=y-77-extra
+        end
+        ordering:SetHeight(-149-y)
+        y=y-12
+        placeAt(sliderPane,14,y+10)
+        placeAt(thresholdText,25,y)
+        placeAt(slider,27,y-30)
+        local tall=-y+153
+        if settings:IsShown() and math.abs((settings:GetHeight() or tall)-tall)>0.5 then
+            local left,top=settings:GetLeft(),settings:GetTop()
+            if type(left)=="number" and type(top)=="number" then
+                settings:ClearAllPoints()
+                settings:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",left,top)
+            end
+        end
+        settings:SetHeight(tall)
+        placeAt(statusPane,14,-tall+80)
+        placeAt(status,25,-tall+68)
+        placeAt(enableButton,16,-tall+36)
+        placeAt(report,384,-tall+36)
+    end
     -- Advanced: every box but the buffs, in a drawer beside the window. It closes with the
     -- window, and the Advanced button stays lit while it's open. While PvP protection is off its
     -- warning shows under its box, and the boxes below move down to make room.
@@ -489,6 +595,8 @@ function Z.CreateUI()
         Z.db.skipLevelOne=value
         Z.Refresh()
     end)
+    Z.instantBackCheck=box(L.INSTANT_BUFF_BACK,L.INSTANT_BUFF_BACK_TIP,function(value) Z.SetInstantBuffBack(value) end)
+    Z.lowerRanksCheck=box(L.LOWER_RANKS,L.LOWER_RANKS_TIP,function(value) Z.SetLowerRanks(value) end)
     Z.pvpCheck=box(L.PVP_PROTECTION,L.PVP_TIP,function(value)
         Z.db.pvp=value
         layoutAdvanced()
@@ -504,7 +612,7 @@ function Z.CreateUI()
     Z.giversCheck=box(L.TRACK_GIVERS,L.TRACK_GIVERS_TIP,function(value) Z.SetTrackGivers(value) end)
     Z.protectCheck=box(L.PROTECT_BUFFS,L.PROTECT_BUFFS_TIP,function(value) Z.SetProtectBuffs(value) end)
     Z.queueCheck=box(L.SHOW_QUEUE,L.SHOW_QUEUE_TIP,function(value) Z.SetQueueWindowShown(value) end)
-    local upper={Z.classFirstCheck,Z.lowFirstCheck,Z.afkCheck,Z.levelOneCheck,Z.pvpCheck}
+    local upper={Z.classFirstCheck,Z.lowFirstCheck,Z.afkCheck,Z.levelOneCheck,Z.instantBackCheck,Z.lowerRanksCheck,Z.pvpCheck}
     local lower={Z.minimapCheck,Z.giversCheck,Z.protectCheck,Z.queueCheck}
     local function place(b,y)
         b:ClearAllPoints() b:SetPoint("TOPLEFT",14,y)

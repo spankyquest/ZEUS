@@ -159,6 +159,13 @@ local function preClick(self,mouse,down)
     end
     local fresh=Z.Candidate(c.unit,c.profile,c.intent,S.retry and S.retry.guid==c.guid)
     if not fresh or fresh.guid~=c.guid then Z.Arm(nil) return end
+    -- Still in the global cooldown from the last buff, and too early for the game to queue this
+    -- one: the press casts nothing, so it can't fail and cost this player their next buff.
+    if not fresh.inspect and Z.CooldownLeft(fresh.spellID)>Z.QueueWindow() then
+        disarm(self)
+        Z.diag.last="Waiting for the global cooldown"
+        return
+    end
     Z.Arm(fresh)
     if fresh.inspect then
         S.acquisition={guid=fresh.guid,profile=fresh.profile,at=GetTime()}

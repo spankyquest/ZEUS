@@ -14,4 +14,5 @@ Z.tagline = {
     esMX = "Pulsa tu tecla y ZEUS elige quién necesita un buff.",
     frFR = "Appuie sur ta touche et ZEUS choisit qui a besoin d'un buff.",
     ptBR = "Aperte sua tecla e o ZEUS escolhe quem precisa de buff.",
+    zhCN = "按下按键，ZEUS为你挑出下一个需要Buff的人。",
 }

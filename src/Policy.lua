@@ -58,10 +58,13 @@ function Z.MigrateMemory(db, durations)
         end
     end
 end
+-- The rank to cast on a player of this level: the strongest learned they can take, no stronger
+-- than the one picked for the buff (Priorities.lua's Z.RankChoice).
 function Z.Rank(p, level)
     if type(level) ~= "number" or not Z.Safe(level) or level < 1 then return nil end
+    local cap = Z.RankChoice and Z.RankChoice(Z.db, p)
     for _, r in ipairs(p.learned or {}) do
-        if level >= r[2] then return r[1] end
+        if level >= r[2] and (not cap or (Z.SpellRankIndex(p, r[1]) or 0) >= cap) then return r[1] end
     end
 end
 -- Rank order comes from the profile's explicit spell list, never numeric IDs.

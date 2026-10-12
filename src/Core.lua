@@ -44,7 +44,7 @@ function Z.SyncNameplateState()
     end
     if Z.UpdateStatus then Z.UpdateStatus() end
 end
-local nextInputScan,inputTarget=0,nil
+local nextInputScan,inputTarget,inputBack=0,nil,""
 function Z.Refresh(fromInput)
     if not started then return end
     local wasDirty=dirty
@@ -59,9 +59,15 @@ function Z.Refresh(fromInput)
     end
     if not Z.enabled then return end
     local targetGUID=UnitGUID("target")
+    -- Buffing back (Givers.lua): the giver of the buff under the mouse, then with Instant
+    -- buff-back the players who have just buffed you.
+    local givers=Z.BuffBackGivers and Z.BuffBackGivers() or {}
+    local keys={}
+    for i,g in ipairs(givers) do keys[i]=g.guid or g.name end
+    local backKey=table.concat(keys,"\n")
     -- Input reuses a scan under 100 ms old unless something changed since.
     if fromInput and not wasDirty and not S.pending and not S.acquisition and safe(targetGUID)
-        and targetGUID==inputTarget and GetTime()<nextInputScan then return end
+        and targetGUID==inputTarget and backKey==inputBack and GetTime()<nextInputScan then return end
     if S.pending and GetTime()-S.pending.at > 2 then Z.FinishBatchAttempt(S.pending) S.pending=nil end
     local acquisition=S.acquisition
     if acquisition then
@@ -91,9 +97,15 @@ function Z.Refresh(fromInput)
         -- Temporary skips expire normally; never reset successful-buff memory.
         Z.queue=Z.BuildQueue()
         nextInputScan=GetTime()+0.1
-        inputTarget=targetGUID
+        inputTarget,inputBack=targetGUID,backKey
         local first=Z.queue[1]
-        Z.Arm(first and not first.oom and first or nil)
+        -- Someone to buff back comes before the queue, even mid-visit.
+        local back
+        for _,g in ipairs(givers) do
+            back=Z.BuffBackCandidate(g)
+            if back then break end
+        end
+        Z.Arm(back or (first and not first.oom and first or nil))
     end
     if Z.UpdateStatus then Z.UpdateStatus() end
 end
@@ -128,6 +140,9 @@ local function failure(message)
     local pending=S.pending
     local inBatch=S.batch and S.batch.guid==pending.guid
     local retryFailure=Z.RetryFailure(message)
+    -- Pressed during the global cooldown mid-visit: the same buff waits for the next press, on
+    -- the same player, instead of counting as tried.
+    local sameBuff=inBatch and retryFailure=="cooldown"
     local bounce=message and ((SPELL_FAILED_AURA_BOUNCED and message==SPELL_FAILED_AURA_BOUNCED)
         or message:gsub("%.$","")=="A more powerful spell is already active")
     if Z.LineOfSightFailure(message) then
@@ -148,7 +163,7 @@ local function failure(message)
     if inBatch then
         Z.skips[pending.guid]=nil
         S.retry=nil
-        Z.FinishBatchAttempt(pending)
+        if not sameBuff then Z.FinishBatchAttempt(pending) end
     end
     Z.diag.last=message or "Cast unavailable"
     S.pending=nil
@@ -209,6 +224,7 @@ end
 local function settingDefaults()
     Z.db.enabled=type(Z.db.enabled)=="table" and Z.db.enabled or {}
     Z.NormalizePriorities(Z.db)
+    Z.NormalizeRanks(Z.db)
     Z.db.refresh=math.max(0,math.min(99,math.floor((tonumber(Z.db.refresh) or 25)+0.5)))
     if Z.db.pvp==nil then Z.db.pvp=true end
     if type(Z.db.skipAFK)~="boolean" then Z.db.skipAFK=true end
@@ -219,6 +235,8 @@ local function settingDefaults()
     if type(Z.db.trackGivers)~="boolean" then Z.db.trackGivers=true end
     if type(Z.db.protectBuffs)~="boolean" then Z.db.protectBuffs=false end
     if type(Z.db.showQueue)~="boolean" then Z.db.showQueue=false end
+    if type(Z.db.instantBuffBack)~="boolean" then Z.db.instantBuffBack=false end
+    if type(Z.db.lowerRanks)~="boolean" then Z.db.lowerRanks=false end
     -- Every buff starts ticked; a buff the player unticked stays unticked.
     for _,p in ipairs(Z.profiles) do
         if Z.db.enabled[p.key]==nil then Z.db.enabled[p.key]=true end
@@ -228,8 +246,8 @@ end
 -- class order locked again. Kept: your
 -- buff-hours, whether ZEUS is enabled, and what ZEUS has learned while buffing (who it buffed
 -- recently, and the buffs that block yours; /zeus blockers clear forgets those).
-local SETTINGS={"key","enabled","priorities","priorityVersion","refresh","pvp","skipAFK",
-    "skipLevelOne","sortBy","levelOrder","dualEdge","trackGivers","protectBuffs","showQueue","queueWindow","position"}
+local SETTINGS={"key","enabled","priorities","priorityVersion","ranks","refresh","pvp","skipAFK",
+    "skipLevelOne","sortBy","levelOrder","dualEdge","trackGivers","protectBuffs","showQueue","queueWindow","instantBuffBack","lowerRanks","position"}
 function Z.RestoreDefaults()
     if InCombatLockdown() then Z.Print(L.NO_COMBAT_RESET) return false end
     for _,key in ipairs(SETTINGS) do Z.db[key]=nil end
@@ -238,10 +256,11 @@ function Z.RestoreDefaults()
     if Z.ApplyBuffProtection then Z.ApplyBuffProtection() end
     if Z.ApplyQueueWindow then Z.ApplyQueueWindow() end
     Z.ApplyBinding()
+    -- A class order left open for editing is locked again (its ranks put away before the window
+    -- goes back to the middle of the screen).
+    for _,editor in pairs(Z.priorityEditors or {}) do editor.relock() end
     if Z.ResetWindowAndMinimap then Z.ResetWindowAndMinimap() end
     if Z.CloseAdvanced then Z.CloseAdvanced() end
-    -- A class order left open with Edit Order is locked again.
-    for _,editor in pairs(Z.priorityEditors or {}) do editor.relock() end
     if Z.RefreshSettings then Z.RefreshSettings() end
     Z.Refresh()
     Z.Print(L.DEFAULTS_RESTORED)
@@ -307,10 +326,13 @@ Z.frame:SetScript("OnEvent",function(_,event,...)
         S.pending,S.acquisition,S.retry,S.batch=nil,nil,nil,nil
         S.passSkipped={}
         if Z.CancelCapture then Z.CancelCapture() end
+        -- The settings window closes as a fight starts (it can't be opened during one).
+        if Z.CloseSettings then Z.CloseSettings() end
         if Z.UpdateStatus then Z.UpdateStatus() end
         return
     elseif event=="PLAYER_REGEN_ENABLED" then
         Z.ApplyBinding()
+        if Z.LayoutSettings then Z.LayoutSettings() end -- a layout put off during combat
     elseif event=="SPELLS_CHANGED" or event=="PLAYER_ENTERING_WORLD" then
         -- (isInitialLogin, isReloadingUi): a fresh login starts ZEUS off; a /reload keeps it.
         if event=="PLAYER_ENTERING_WORLD" and safe(a) and a==true then Z.StartLoggedIn() end

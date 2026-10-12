@@ -84,3 +84,49 @@ function Z.ToggleClass(db,p,class)
     db.priorities[p.key]=custom
 end
 function Z.ResetPriority(db,p) db.priorities[p.key]=nil end
+-- Ranks (picked under a buff's class tiles while editing, with Advanced's "Enable lower rank
+-- buffs" ticked): the strongest rank ZEUS casts of that buff, players too low for it getting
+-- the strongest they can take. With none picked, or the box unticked, it is the strongest
+-- learned (a pick is kept for when the box is ticked again). A pick keeps the strongest rank learned when it was made (top), so
+-- once the trainer teaches a stronger one ZEUS goes back to the strongest (UpdateRankChoices).
+local function byKey(key)
+    for _,p in ipairs(Z.profiles) do if p.key==key then return p end end
+end
+local function strongest(p) return p.learned and p.learned[1] end
+-- The index in p.ranks (1 = strongest) of the rank ZEUS casts at most, nil with none learned.
+function Z.RankChoice(db,p)
+    local pick=type(db)=="table" and db.lowerRanks==true and type(db.ranks)=="table" and db.ranks[p.key]
+    local index=type(pick)=="table" and Z.SpellRankIndex(p,pick.spell)
+    if index then return index end
+    local top=strongest(p)
+    return top and Z.SpellRankIndex(p,top[1]) or nil
+end
+-- Picks a learned rank; the strongest learned clears the pick.
+function Z.SetRank(db,p,id)
+    db.ranks=type(db.ranks)=="table" and db.ranks or {}
+    local top,learned=strongest(p),false
+    for _,r in ipairs(p.learned or {}) do if r[1]==id then learned=true end end
+    if not learned or not top or id==top[1] then db.ranks[p.key]=nil return end
+    db.ranks[p.key]={spell=id,top=top[1]}
+end
+function Z.NormalizeRanks(db)
+    db.ranks=type(db.ranks)=="table" and db.ranks or {}
+    for key,pick in pairs(db.ranks) do
+        local p=byKey(key)
+        if not p or type(pick)~="table" or not Z.SpellRankIndex(p,pick.spell) or not Z.SpellRankIndex(p,pick.top) then
+            db.ranks[key]=nil
+        end
+    end
+end
+-- After the spellbook changes: a rank stronger than the strongest learned when a pick was made
+-- means the trainer taught a new one, and ZEUS casts the strongest again.
+function Z.UpdateRankChoices(db)
+    if type(db.ranks)~="table" then return end
+    for key,pick in pairs(db.ranks) do
+        local p=byKey(key)
+        local top=p and strongest(p)
+        local now=top and Z.SpellRankIndex(p,top[1])
+        local before=now and type(pick)=="table" and Z.SpellRankIndex(p,pick.top)
+        if before and now<before then db.ranks[key]=nil end
+    end
+end

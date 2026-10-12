@@ -69,7 +69,7 @@ Z.GAMEPAD = {
 		why = "RegisterStateDriver hides ZEUS's own receivers in combat and tells its drag buttons about combat: Blizzard's secure state driver for addons, on no gamepad path." },
 	{ id = "buff-givers", kind = "tooltip-callback", files = { "Givers.lua" },
 		guard = "gate", toPad = "stays", toMouse = "nothing",
-		why = "A post-call on the game's tooltip processor and hooks that run after the game tooltip's aura setters add a \"Given by\" line to your own buffs, once per tooltip. Both stay for the session (neither can be removed); with the gamepad UI on they add nothing.",
+		why = "A post-call on the game's tooltip processor and hooks that run after the game tooltip's aura setters add a \"Given by\" line to your own buffs, once per tooltip. GetMouseFoci tells which of your buffs is under the mouse, so the Buff Key can buff its giver back (a read). Both stay for the session (neither can be removed); with the gamepad UI on they add nothing.",
 		pins = { "Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua:199 function TooltipDataProcessor.AddTooltipPostCall(tooltipType, func)",
 			"Blizzard_BuffFrame/BuffFrame.lua:1179 GameTooltip:SetUnitAuraByAuraInstanceID(PlayerFrame.unit, self.buttonInfo.auraInstanceID);" } },
 	{ id = "buff-whisper", kind = "event-callback", files = { "Givers.lua" },
